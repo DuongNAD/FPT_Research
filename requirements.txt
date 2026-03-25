@@ -1,0 +1,9 @@
+requests
+neo4j
+google-genai
+fastapi
+uvicorn
+httpx
+torch
+torch_geometric
+networkx

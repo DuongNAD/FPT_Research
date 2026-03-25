@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyPI Threat Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+    <!-- Include Vis.js for Graph Visualization -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+    <div class="background-blob"></div>
+    <div class="background-blob blob-2"></div>
+    
+    <header class="glass-panel">
+        <div class="header-content">
+            <h1>ShieldAI <span>Threat Dashboard</span></h1>
+            <p>Knowledge Graph Analysis Powered by LLM Syscall Monitors</p>
+        </div>
+        <div class="status-indicator">
+            <span class="pulse"></span> System Active
+        </div>
+    </header>
+
+    <main class="dashboard-grid">
+        <section class="alerts-section glass-panel">
+            <h2>🚨 Critical Alerts</h2>
+            <div id="alerts-container" class="scrollable">
+                <div class="loading">Analyzing syscall logs...</div>
+            </div>
+        </section>
+
+        <section class="graph-section glass-panel">
+            <h2>🧬 Threat Mapping Graph</h2>
+            <div id="network-graph" class="network-container"></div>
+        </section>
+
+        <section class="summary-section glass-panel">
+            <h2>📦 Package Risk Analysis</h2>
+            <div id="package-list" class="scrollable">
+            </div>
+        </section>
+
+        <section class="blacklist-section glass-panel">
+            <h2>⛔ Blacklist Registry</h2>
+            <div id="blacklist-container" class="scrollable" style="color: #ff4b4b;">
+                <div class="loading">Loading malicious cache...</div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

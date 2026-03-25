@@ -1,0 +1,20 @@
+[
+    {
+        "type": "API_Call",
+        "api": "requests",
+        "rule_id": "src.python-malicious-requests",
+        "source_file": "setup.py",
+        "line": 8,
+        "code_snippet": "requires login",
+        "package_name": "requests-fake-1.0.0"
+    },
+    {
+        "type": "API_Call",
+        "api": "eval/exec",
+        "rule_id": "src.python-malicious-eval",
+        "source_file": "setup.py",
+        "line": 11,
+        "code_snippet": "requires login",
+        "package_name": "requests-fake-1.0.0"
+    }
+]
