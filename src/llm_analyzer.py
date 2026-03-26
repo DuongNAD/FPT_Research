@@ -19,25 +19,38 @@ def analyze_syscalls(log_path: str) -> dict:
         return {"error": "Missing log file"}
         
     try:
-        # Đọc nội dung file log (giới hạn dung lượng để tránh quá tải token)
+        # Đọc toàn bộ nội dung file log để LLM đóng vai trò màng lọc thô (Raw log filter)
         with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
-            # Lấy 500 dòng cuối hoặc các dòng chứa từ khóa quan trọng
             lines = f.readlines()
-            content = "".join(lines[-500:]) if len(lines) > 500 else "".join(lines)
+            
+            # BỘ LỌC HEURISTIC: Tránh việc file 16MB của pip làm trôi hết các syscall nhạy cảm
+            # Ta chỉ lấy các dòng có chứa hoạt động Mạng, Tiến trình con, hoặc Truy cập File nhạy cảm
+            suspicious_keywords = ["connect(", "socket(", "execve(", "clone(", "fork(", "/etc/", "http", ".com", "wget", "curl"]
+            filtered_lines = [l for l in lines if any(k in l for k in suspicious_keywords)]
+            
+            # Nếu lọc xong mà rỗng (không thấy malware), ta lấy 1000 dòng đầu và cuối làm context nền
+            if not filtered_lines:
+                filtered_lines = lines[:1000] + ["\n... [NO SUSPICIOUS SYSCALLS HEURISTIC MATCHES] ...\n"] + lines[-1000:]
+                
+            content = "".join(filtered_lines)
+            if len(content) > 3_000_000:
+                logger.warning("File log lọc xong vẫn quá lớn (>3MB), cắt 3MB đầu.")
+                content = content[:3_000_000]
     except Exception as e:
         logger.error(f"Lỗi đọc file: {e}")
         content = "Error reading log."
         
     prompt = f"""
-    Bạn là một chuyên gia phân tích bảo mật (Cyber Security Analyst).
-    Dưới đây là một đoạn trích xuất từ file syslog (strace) thu thập được khi một gói tin Python được kích nổ trong Sandbox:
+    Bạn là một màng lọc bảo mật (Security Filter AI) kiêm chuyên gia phân tích.
+    Nhiệm vụ của bạn là đọc TOÀN BỘ file log syslog (strace) khổng lồ dưới đây, được thu thập khi một gói tin Python cài đặt trong Sandbox.
+    Bên trong hàng triệu dòng log này có chứa rất nhiều tiến trình hợp lệ của pip. Bạn phải mò tìm như mò kim đáy bể để phát hiện ra các hành vi ngoại lai (Ví dụ: đọc /etc/passwd, tạo file lạ, gọi lệnh shell, mở socket kết nối ra IP/domain lạ, v.v).
     
     ```
     {content}
     ```
     
-    Hãy phân tích kỹ các hành vi (đọc/ghi file nhạy cảm, mở kết nối mạng không mong muốn, tải thêm mã độc...)
-    Và trả về MỘT bản tóm tắt hành vi dưới định dạng JSON (prosecutor_case) theo cấu trúc sau (không kèm theo văn bản nào khác ngoài JSON):
+    Hãy lọc ra và phân tích kỹ các hành vi đáng ngờ. 
+    Trả về MỘT bản JSON (prosecutor_case) theo cấu trúc sau (TỐI QUAN TRỌNG: TRẢ VỀ DUY NHẤT CHUỖI JSON, KHÔNG CÓ BẤT KỲ VĂN BẢN TRÌNH BÀY NÀO KHÁC):
     {{
         "suspicious_activities": ["Hành vi 1", "Hành vi 2"],
         "network_connections": ["IP/Domain 1", "IP/Domain 2"],

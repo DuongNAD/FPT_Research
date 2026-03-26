@@ -1,22 +1,6 @@
-# Environments
 venv/
-env/
-.env
-
-# Python caches
 __pycache__/
-*.py[cod]
-*$py.class
-
-# IDEs
-.vscode/
-.idea/
-
-# Database / Logs
-neo4j_data/
-logs/
-*.log
-
-# OS generated files
+*.pyc
+.env
+quarantine/
 .DS_Store
-Thumbs.db

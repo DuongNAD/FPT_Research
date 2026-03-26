@@ -2,6 +2,7 @@ import os
 import time
 import subprocess
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +27,16 @@ def run_in_sandbox(filename: str) -> str:
         logger.error(f"File mã độc không tồn tại tại: {host_package_path}")
         return ""
     
-    log_filename = f"syscalls_{int(time.time())}.log"
+    run_id = uuid.uuid4().hex[:8]
+    log_filename = f"syscalls_{run_id}.log"
     host_log_path = os.path.join(quarantine_dir, log_filename)
     
-    pcap_filename = f"capture_{int(time.time())}.pcap"
+    pcap_filename = f"capture_{run_id}.pcap"
     host_pcap_path = os.path.join(quarantine_dir, pcap_filename)
     
     logger.info(f"Đang kích hoạt Docker Sandbox cho siêu gói tin: {filename}")
     
-    container_name = f"sandbox_{int(time.time())}"
+    container_name = f"sandbox_{run_id}"
     
     try:
         # BƯỚC 1 & 2: Khởi tạo container và giữ nó chạy ngầm

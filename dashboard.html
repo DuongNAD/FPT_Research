@@ -495,6 +495,26 @@
             50% { opacity: 0; }
         }
 
+        /* Modal Viewer CSS */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.85); display: none;
+            justify-content: center; align-items: center; z-index: 9999;
+        }
+        .modal-content {
+            background: #0f172a; width: 85%; max-width: 1000px; height: 85vh;
+            border: 1px solid #3b82f6; border-radius: 8px; display: flex; flex-direction: column;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .modal-header {
+            padding: 15px 20px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-body {
+            flex: 1; padding: 20px; overflow-y: auto; background: #000; color: #a5b4fc;
+            font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
         /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -503,6 +523,19 @@
     </style>
 </head>
 <body>
+    <!-- RAW LOG MODAL -->
+    <div id="logModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0; color:#60a5fa; font-family:'JetBrains Mono', monospace;"><i class="ph-bold ph-terminal-window"></i> Intercepted Sandbox Syscalls</h3>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="downloadCurrentLog()" style="background:#10b981; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;"><i class="ph-bold ph-download-simple"></i> Download .log</button>
+                    <button onclick="document.getElementById('logModal').style.display='none'" style="background:#ef4444; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;"><i class="ph-bold ph-x"></i></button>
+                </div>
+            </div>
+            <div id="logContent" class="modal-body">Loading...</div>
+        </div>
+    </div>
 
     <!-- SIDEBAR -->
     <div class="sidebar">
@@ -537,6 +570,9 @@
             </div>
             
             <div class="topbar-actions">
+                <button id="btn-approve" onclick="approveStep()" style="display:none; background:#f59e0b; color:#0f172a; border:none; padding:8px 16px; border-radius:6px; font-weight:bold; cursor:pointer; font-family:'JetBrains Mono', monospace;"><i class="ph ph-hand-tap"></i> APPROVE STEP</button>
+                <button id="btn-mode" onclick="toggleMode()" style="background:transparent; color:#3b82f6; border:1px solid #3b82f6; padding:8px 16px; border-radius:6px; font-weight:bold; cursor:pointer; font-family:'JetBrains Mono', monospace; transition: all 0.2s;">MODE: AUTO</button>
+
                 <div class="search-box">
                     <i class="ph ph-magnifying-glass"></i>
                     <input type="text" placeholder="Search system events...">
@@ -601,8 +637,7 @@
                         <i class="ph ph-terminal-window"></i> Live System Stream
                     </div>
                     <div class="terminal-actions">
-                        <button class="btn-small" onclick="document.getElementById('terminal-body').innerHTML=''">Clear</button>
-                        <button class="btn-small">Export</button>
+                        <button class="btn-small" onclick="resetPipeline()" style="background:rgba(239,68,68,0.2); color:#ef4444; border-color:rgba(239,68,68,0.5);"><i class="ph-bold ph-arrows-counter-clockwise"></i> Reset</button>
                     </div>
                 </div>
                 
@@ -658,6 +693,24 @@
                 const data = JSON.parse(event.data);
                 addLogEntry(data.message, data.step);
                 updatePipelineUI(data.step, data.message);
+                
+                // Auto-sync UI states cleanly 
+                if (data.message.includes('Bắt đầu chặn luồng tải nội dung từ PyPI')) {
+                    for (let i = 1; i <= 4; i++) { const card = document.getElementById(`card-${i}`); const badge = document.getElementById(`badge-${i}`); if (card && badge) { card.className = 'pipeline-card'; badge.className = 'status-pill pending'; badge.innerText = 'PENDING...'; } }
+                    document.getElementById('card-1').classList.add('active');
+                    document.getElementById('badge-1').className = 'status-pill active';
+                    document.getElementById('badge-1').innerText = 'INGESTING';
+                }
+                
+                // Giữ nút Approve luôn hiện ở mode Interactive, chỉ thay đổi opacity để làm mờ khi không cần thiết
+                if (data.step === 'pause') {
+                    document.getElementById('btn-approve').style.opacity = '1';
+                    document.getElementById('btn-approve').style.animation = 'blink 1.5s infinite';
+                }
+                if (data.step === 'resume') {
+                    document.getElementById('btn-approve').style.opacity = '0.5';
+                    document.getElementById('btn-approve').style.animation = 'none';
+                }
             };
 
             ws.onclose = function() {
@@ -714,7 +767,11 @@
                 terminalBody.appendChild(div);
             } else {
                 const tagInfo = determineTag(message);
-                const contentText = stripTag(message);
+                let contentText = stripTag(message);
+                
+                if (contentText.includes('[[VIEW_LOG:')) {
+                    contentText = contentText.replace(/\[\[VIEW_LOG:(.*?)]]/g, `<button onclick="viewRawLog('$1')" style="background:#10b981; color:#fff; border:none; padding:4px 10px; border-radius:4px; font-size:11px; cursor:pointer; margin-left:10px;"><i class="ph ph-file-text"></i> Xem Raw File Log</button>`);
+                }
                 
                 const div = document.createElement('div');
                 div.className = 'log-line';
@@ -899,6 +956,85 @@
                 layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 250, nodeSpacing: 80 } },
                 physics: { hierarchicalRepulsion: { nodeDistance: 120 } }
             });
+        }
+
+        // --- INTERACTIVE MODE LOGIC ---
+        let isInteractive = false;
+        async function toggleMode() {
+            isInteractive = !isInteractive;
+            const btn = document.getElementById('btn-mode');
+            if (isInteractive) {
+                btn.style.background = '#3b82f6';
+                btn.style.color = '#fff';
+                btn.innerText = 'MODE: INTERACTIVE';
+                document.getElementById('btn-approve').style.display = 'inline-block';
+                document.getElementById('btn-approve').style.opacity = '0.5';
+            } else {
+                btn.style.background = 'transparent';
+                btn.style.color = '#3b82f6';
+                btn.innerText = 'MODE: AUTO';
+                document.getElementById('btn-approve').style.display = 'none';
+            }
+            await fetch('/api/toggle_mode', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({interactive: isInteractive})
+            });
+        }
+
+        async function approveStep() {
+            // Không ẩn nút đi nữa, chỉ làm mờ và dừng nháy
+            document.getElementById('btn-approve').style.opacity = '0.5';
+            document.getElementById('btn-approve').style.animation = 'none';
+            await fetch('/api/approve_step', {method: 'POST'});
+        }
+
+        let currentLogPath = '';
+        async function viewRawLog(path) {
+            currentLogPath = path;
+            document.getElementById('logModal').style.display = 'flex';
+            document.getElementById('logContent').innerText = '⏳ Đang tải file log thô từ Quarantine...';
+            try {
+                const res = await fetch('/api/logs?path=' + encodeURIComponent(path));
+                if (!res.ok) throw new Error("Server error");
+                const data = await res.json();
+                document.getElementById('logContent').innerText = data.content || data.error;
+            } catch(e) {
+                document.getElementById('logContent').innerText = "❌ Lỗi không thể tải log file.";
+            }
+        }
+
+        function downloadCurrentLog() {
+            let filename = currentLogPath.split('/').pop() || 'syscalls.log';
+            const blob = new Blob([document.getElementById('logContent').innerText], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
+        function resetPipeline() {
+            document.getElementById('terminal-body').innerHTML = '<div class="log-line"><span class="log-timestamp">' + getTimestamp() + '</span><span class="log-tag tag-proxy">[System]</span><span class="log-content" style="color:#10b981">Hệ thống đã được lập lại (Reset). Sẵn sàng bắt gói tin mới từ Proxy...</span></div>';
+            for (let i = 1; i <= 4; i++) {
+                const card = document.getElementById(`card-${i}`);
+                const badge = document.getElementById(`badge-${i}`);
+                if (card && badge) {
+                    card.className = 'pipeline-card';
+                    if (i === 1) {
+                        badge.className = 'status-pill active';
+                        badge.innerText = 'INGESTING';
+                        card.classList.add('active');
+                    } else {
+                        badge.className = 'status-pill pending';
+                        badge.innerText = 'PENDING...';
+                    }
+                }
+            }
+            if (isInteractive) {
+                document.getElementById('btn-approve').style.display = 'inline-block';
+                document.getElementById('btn-approve').style.opacity = '0.5';
+            } else {
+                document.getElementById('btn-approve').style.display = 'none';
+            }
         }
     </script>
 </body>

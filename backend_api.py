@@ -6,7 +6,8 @@ import json
 import asyncio
 from pathlib import Path
 from typing import List
-from ingestion import download_and_analyze, set_log_callback
+from pydantic import BaseModel
+from ingestion import download_and_analyze, set_log_callback, pipeline_state
 
 app = FastAPI(title="ShieldAI Zero-Trust PyPI Proxy")
 
@@ -66,6 +67,41 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+class ModeRequest(BaseModel):
+    interactive: bool
+
+@app.get("/api/logs")
+async def get_raw_log(path: str):
+    log_file = Path(path)
+    if log_file.exists():
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+            suspicious_keywords = ["connect(", "socket(", "execve(", "clone(", "fork(", "/etc/", "http", ".com", "wget", "curl"]
+            filtered = [l for l in lines if any(k in l for k in suspicious_keywords)]
+            
+            if not filtered:
+                filtered = lines[:500] + ["\n... [CLEAN/TRUNCATED FOR UI] ...\n"] + lines[-500:]
+            else:
+                filtered.insert(0, "=== SHIELDAI AUTOMATIC HEURISTIC HIGHLIGHTS ===\n")
+                
+            content = "".join(filtered)
+            if len(content) > 150_000:
+                content = content[:150_000] + "\n... [TRUNCATED DUE TO EXTREME SIZE] ..."
+            return {"content": content}
+    return {"error": "Lỗi: Không tìm thấy file log trên máy chủ Sandbox."}
+
+@app.post("/api/toggle_mode")
+async def toggle_mode(req: ModeRequest):
+    pipeline_state.is_interactive = req.interactive
+    if not pipeline_state.is_interactive:
+        pipeline_state.step_event.set()
+    return {"status": "ok", "interactive": pipeline_state.is_interactive}
+
+@app.post("/api/approve_step")
+async def approve_step():
+    pipeline_state.step_event.set()
+    return {"status": "ok"}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def get_dashboard():

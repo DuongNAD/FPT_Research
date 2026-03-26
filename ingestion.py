@@ -2,6 +2,7 @@ import os
 import httpx
 import logging
 import asyncio
+from pathlib import Path
 from typing import Callable, Awaitable
 
 # Khai báo biến callback cho log thời gian thực
@@ -19,6 +20,20 @@ async def broadcast_log(message: str, step: int = 1):
 
 QUARANTINE_DIR = "quarantine"
 os.makedirs(QUARANTINE_DIR, exist_ok=True)
+
+class PipelineState:
+    def __init__(self):
+        self.is_interactive = False
+        self.step_event = asyncio.Event()
+
+pipeline_state = PipelineState()
+
+async def interactive_pause(step_name):
+    if pipeline_state.is_interactive and _log_callback:
+        pipeline_state.step_event.clear()
+        await broadcast_log(f"[Interactive] 🛑 TẠM DỪNG TIẾN TRÌNH: Vui lòng XÁC NHẬN trên UI (Nút APPROVE STEP) để {step_name}!", "pause")
+        await pipeline_state.step_event.wait()
+        await broadcast_log(f"[Interactive] 🟢 ĐÃ XÁC NHẬN! Tiếp tục thực thi {step_name}...", "resume")
 
 import sys
 # Để import được từ src
@@ -56,6 +71,7 @@ async def download_and_analyze(url: str, filename: str) -> bool:
         return True
         
     # Bước 2 & 3: Thực thi trong Sandbox và lấy syscalls
+    await interactive_pause("ném gói tin vào Sandbox Độc Lập")
     await broadcast_log(f"[Sandbox] Đưa '{safe_filename}' vào Firecracker/Docker Container để kích nổ...", 2)
     
     # Do run_in_sandbox là hàm chặn (blocking), nên đẩy vào thread để không block event loop của FastAPI
@@ -64,13 +80,16 @@ async def download_and_analyze(url: str, filename: str) -> bool:
     
     if log_path and os.path.exists(log_path):
         size = os.path.getsize(log_path)
-        await broadcast_log(f"[Syscalls] Trích xuất thành công: Bắt được {size} bytes nhật ký hệ điều hành tại {log_path}", 3)
+        log_path_str = Path(log_path).as_posix()
+        await interactive_pause("trích xuất phần bằng chứng Syscalls")
+        await broadcast_log(f"[Syscalls] Trích xuất thành công: Bắt được {size} bytes nhật ký hệ điều hành tại {log_path} [[VIEW_LOG:{log_path_str}]]", 3)
     else:
         await broadcast_log(f"[Syscalls - LỖI] Không thể kết xuất file syscalls.log từ Sandbox.", 'done')
         return False
 
     # Bước 4 & 5: Phân tích LLM và xuất JSON (prosecutor_case)
     from src.llm_analyzer import analyze_syscalls
+    await interactive_pause("chuyển giao thông tin tóm tắt cho AI phân tích")
     await broadcast_log(f"[LLM Analyst] Bắt đầu đọc file log khô khan và gạn lọc thông qua Gemini (Hoặc AI Dummy)...", 4)
     
     # Gọi AI để phân tích log (block thread để đảm bảo đồng bộ)
@@ -84,8 +103,9 @@ async def download_and_analyze(url: str, filename: str) -> bool:
         
     score = case_data.get("severity_score", 0)
     summary = case_data.get("summary", "Không có tóm tắt")
+    json_path_str = Path(json_path).as_posix()
     
-    await broadcast_log(f"[LLM Analyst] Phân tích hoàn tất! Điểm rủi ro (Severity): {score}/10.\nSơ bộ: {summary}", 4)
+    await broadcast_log(f"[LLM Analyst] Phân tích hoàn tất! Điểm rủi ro (Severity): {score}/10.\nSơ bộ: {summary} [[VIEW_JSON:{json_path_str}]]", 4)
     
     # Bước 6 chưa hoàn thiện. Ta dùng điểm Severity để làm Base Decision:
     if score >= 7:
