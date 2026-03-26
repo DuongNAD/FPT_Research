@@ -1,9 +1,8 @@
-requests
-neo4j
-google-genai
-fastapi
-uvicorn
-httpx
-torch
-torch_geometric
-networkx
+fastapi==0.110.0
+uvicorn==0.29.0
+requests==2.31.0
+docker==7.0.0
+neo4j==5.19.0
+google-genai==0.3.0
+langchain==0.1.13
+pydantic==2.6.4

@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShieldAI Ops - Live Tracker</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        :root {
+            --bg-base: #0a0f18; /* Nền chính tối */
+            --bg-panel: #111827; /* Nền panel */
+            --bg-sidebar: #0f1523;
+            --border-color: #1f2937;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            
+            --accent-blue: #3b82f6;
+            --accent-blue-glow: rgba(59, 130, 246, 0.4);
+            --accent-green: #10b981;
+            --accent-green-glow: rgba(16, 185, 129, 0.4);
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-red-glow: rgba(239, 68, 68, 0.2);
+            
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 250px;
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 40px;
+            padding-left: 8px;
+        }
+        
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            box-shadow: 0 0 15px var(--accent-blue-glow);
+        }
+
+        .brand-text h1 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .brand-text span {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 6px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            color: var(--text-main);
+            background-color: rgba(255,255,255,0.05);
+        }
+
+        .nav-item.active {
+            color: var(--text-main);
+            background-color: #1e293b;
+            box-shadow: inset 3px 0 0 var(--accent-blue);
+        }
+
+        .nav-item i {
+            font-size: 20px;
+        }
+
+        .deploy-btn {
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: var(--font-sans);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: opacity 0.2s;
+            margin-top: 20px;
+        }
+
+        .deploy-btn:hover {
+            opacity: 0.9;
+            box-shadow: 0 0 15px var(--accent-blue-glow);
+        }
+
+        /* --- MAIN CONTENT --- */
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: radial-gradient(circle at 50% 0%, #152033 0%, var(--bg-base) 60%);
+        }
+
+        /* --- TOPBAR --- */
+        .topbar {
+            height: 70px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+        }
+
+        .page-title {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .page-title h2 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .page-title .subtitle {
+            font-size: 14px;
+            color: var(--accent-blue);
+            border-bottom: 2px solid var(--accent-blue);
+            padding-bottom: 4px;
+            margin-top: 4px;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .search-box {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 250px;
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            color: white;
+            outline: none;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            width: 100%;
+        }
+
+        .search-box i { color: var(--text-muted); }
+
+        .icon-btn {
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .icon-btn:hover { color: white; }
+
+        /* --- DASHBOARD LYAOUT --- */
+        .dashboard-content {
+            padding: 32px;
+            display: flex;
+            gap: 32px;
+            height: calc(100vh - 70px);
+        }
+
+        /* --- PIPELINE COLUMN --- */
+        .pipeline-col {
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .col-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .col-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .live-dot {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent-green);
+            letter-spacing: 1px;
+        }
+
+        .live-dot::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; box-shadow: 0 0 8px var(--accent-green); }
+            50% { opacity: 0.5; box-shadow: 0 0 2px var(--accent-green); }
+            100% { opacity: 1; box-shadow: 0 0 8px var(--accent-green); }
+        }
+
+        .pipeline-card {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border-left: 4px solid #374151;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pipeline-card.active {
+            border-left-color: var(--accent-blue);
+            background-color: rgba(30, 41, 59, 0.5);
+            box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.05);
+        }
+
+        .pipeline-card.done {
+            border-left-color: var(--accent-green);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .step-num {
+            font-size: 11px;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+        }
+
+        .status-pill {
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .status-pill.done {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-pill.active {
+            background-color: rgba(59, 130, 246, 0.15);
+            color: var(--accent-blue);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .status-pill.pending {
+            background-color: rgba(245, 158, 11, 0.15);
+            color: var(--accent-yellow);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .pipeline-card h4 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background-color: #374151;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #374151;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .pipeline-card.active .progress-fill {
+            background-color: var(--accent-blue);
+            width: 50%;
+            animation: loadProgress 2s infinite alternate;
+        }
+
+        .pipeline-card.done .progress-fill {
+            background-color: var(--accent-green);
+            width: 100%;
+        }
+
+        @keyframes loadProgress {
+            from { width: 30%; }
+            to { width: 80%; }
+        }
+
+        /* --- TERMINAL STREAM --- */
+        .terminal-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: rgba(15, 21, 35, 0.5);
+        }
+
+        .terminal-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .terminal-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-small {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-small:hover {
+            color: white;
+            background-color: #334155;
+        }
+
+        .terminal-body {
+            flex: 1;
+            padding: 20px 24px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .log-line {
+            display: flex;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+        
+        .log-error-box {
+            background-color: var(--accent-red-glow);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            border-radius: 6px;
+            padding: 16px;
+            margin: 16px 0;
+            color: var(--accent-red);
+            font-weight: 500;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .log-timestamp {
+            color: #4b5563;
+            margin-right: 16px;
+            flex-shrink: 0;
+            user-select: none;
+        }
+
+        .log-tag {
+            font-weight: 700;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .tag-proxy { color: var(--accent-blue); }
+        .tag-ingestion { color: var(--accent-green); }
+        .tag-sandbox { color: #8b5cf6; } /* Tím */
+        .tag-syscalls { color: var(--accent-yellow); }
+        .tag-syscalls-err { color: var(--accent-red); }
+        .tag-ai { color: #f43f5e; } /* Hồng */
+
+        .log-content {
+            color: #d1d5db;
+        }
+
+        .terminal-footer {
+            padding: 16px 24px;
+            background-color: rgba(15, 21, 35, 0.8);
+            border-top: 1px solid var(--border-color);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+
+        .terminal-footer span {
+            color: white;
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="brand">
+            <div class="brand-icon"><i class="ph-bold ph-shield-check"></i></div>
+            <div class="brand-text">
+                <h1>ShieldAI Ops</h1>
+                <span>Digital Sentinel Active</span>
+            </div>
+        </div>
+
+        <div class="nav-menu">
+            <a class="nav-item active"><i class="ph-fill ph-squares-four"></i> Dashboard</a>
+            <a class="nav-item"><i class="ph ph-chart-line-up"></i> Pipeline</a>
+            <a class="nav-item"><i class="ph ph-terminal-window"></i> Logs</a>
+            <a class="nav-item"><i class="ph ph-shield-warning"></i> Threats</a>
+            <a class="nav-item"><i class="ph ph-clock-counter-clockwise"></i> Archive</a>
+        </div>
+
+        <button class="deploy-btn">
+            <i class="ph-bold ph-lightning"></i> Deploy Patch
+        </button>
+    </div>
+
+    <!-- MAIN WRAPPER -->
+    <div class="main-wrapper">
+        <!-- TOPBAR -->
+        <div class="topbar">
+            <div class="page-title">
+                <h2>ShieldAI</h2>
+                <div class="subtitle">Live Tracker</div>
+            </div>
+            
+            <div class="topbar-actions">
+                <div class="search-box">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Search system events...">
+                </div>
+                <i class="ph ph-bell icon-btn"></i>
+                <i class="ph ph-gear icon-btn"></i>
+                <i class="ph-fill ph-user-circle icon-btn"></i>
+            </div>
+        </div>
+
+        <!-- DASHBOARD CONTENT -->
+        <div class="dashboard-content">
+            
+            <!-- PIPELINE -->
+            <div class="pipeline-col">
+                <div class="col-header">
+                    <h3>Execution Pipeline</h3>
+                    <div class="live-dot">LIVE</div>
+                </div>
+
+                <div id="card-1" class="pipeline-card active">
+                    <div class="card-header">
+                        <span class="step-num">STEP 01</span>
+                        <span id="badge-1" class="status-pill active">INGESTING</span>
+                    </div>
+                    <h4>Proxy Ingestion</h4>
+                    <div class="progress-bar"><div class="progress-fill"></div></div>
+                </div>
+
+                <div id="card-2" class="pipeline-card">
+                    <div class="card-header">
+                        <span class="step-num">STEP 02</span>
+                        <span id="badge-2" class="status-pill pending">PENDING...</span>
+                    </div>
+                    <h4>Sandbox Execution</h4>
+                    <div class="progress-bar"><div class="progress-fill"></div></div>
+                </div>
+
+                <div id="card-3" class="pipeline-card">
+                    <div class="card-header">
+                        <span class="step-num">STEP 03</span>
+                        <span id="badge-3" class="status-pill pending">PENDING...</span>
+                    </div>
+                    <h4>Syscalls Capture</h4>
+                    <div class="progress-bar"><div class="progress-fill"></div></div>
+                </div>
+
+                <div id="card-4" class="pipeline-card">
+                    <div class="card-header">
+                        <span class="step-num">STEPS 04-06</span>
+                        <span id="badge-4" class="status-pill pending">PENDING...</span>
+                    </div>
+                    <h4>AI Analysis</h4>
+                    <div class="progress-bar"><div class="progress-fill"></div></div>
+                </div>
+            </div>
+
+            <!-- TERMINAL -->
+            <div class="terminal-col">
+                <div class="terminal-header">
+                    <div class="terminal-title">
+                        <i class="ph ph-terminal-window"></i> Live System Stream
+                    </div>
+                    <div class="terminal-actions">
+                        <button class="btn-small" onclick="document.getElementById('terminal-body').innerHTML=''">Clear</button>
+                        <button class="btn-small">Export</button>
+                    </div>
+                </div>
+                
+                <div class="terminal-body" id="terminal-body">
+                    <div class="log-line">
+                        <span class="log-timestamp">14:00:00.00</span>
+                        <span class="log-tag tag-proxy">[System]</span>
+                        <span class="log-content">Listening for intercept events on ShieldAI Proxy...</span>
+                    </div>
+                    <!-- Các log do websocket đẩy vào sẽ hiển thị ở đây -->
+                </div>
+
+                <div class="terminal-footer">
+                    root@shieldai:~$ <span>_</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const terminalBody = document.getElementById('terminal-body');
+        
+        // Thử kết nối WebSocket tới Server backend
+        let ws;
+        function connectWS() {
+            ws = new WebSocket(`ws://${location.host}/ws/logs`);
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                addLogEntry(data.message, data.step);
+                updatePipelineUI(data.step, data.message);
+            };
+
+            ws.onclose = function() {
+                addErrorLog("Mất kết nối tới trung tâm theo dõi. Đang thử kết nối lại...");
+                setTimeout(connectWS, 3000);
+            };
+        }
+
+        connectWS(); // Khởi chạy
+
+        function getTimestamp() {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            const ms = String(now.getMilliseconds()).padStart(2, '0').substring(0,2);
+            return `${h}:${m}:${s}.${ms}`;
+        }
+
+        function determineTag(msg) {
+            msg = msg.toLowerCase();
+            if (msg.includes('[proxy]')) return { class: 'tag-proxy', text: '[Proxy]' };
+            if (msg.includes('[ingestion]')) return { class: 'tag-ingestion', text: '[Ingestion]' };
+            if (msg.includes('[sandbox]')) return { class: 'tag-sandbox', text: '[Sandbox]' };
+            if (msg.includes('[syscalls - lỗi]')) return { class: 'tag-syscalls-err', text: '[Syscalls - LỖI]' };
+            if (msg.includes('[syscalls]')) return { class: 'tag-syscalls', text: '[Syscalls]' };
+            if (msg.includes('[llm') || msg.includes('ai') || msg.includes('[verdict]') || msg.includes('[decision]')) return { class: 'tag-ai', text: '[AI Analysis]' };
+            return { class: 'tag-proxy', text: '[System]' };
+        }
+
+        function stripTag(msg) {
+            return msg.replace(/\[.*?\]\s*/, '');
+        }
+
+        function addLogEntry(message, step) {
+            if (message.toLowerCase().includes('mất kết nối')) {
+                addErrorLog(message);
+                return;
+            }
+
+            const isError = message.toLowerCase().includes('lỗi') || message.toLowerCase().includes('chặn');
+            
+            // Nếu là lỗi đặc biệt nghiêm trọng, hiển thị kiểu Alert Box theo đúng design
+            if (isError && message.includes('[Syscalls - LỖI]')) {
+                const tagInfo = determineTag(message);
+                const contentText = stripTag(message);
+                const div = document.createElement('div');
+                div.className = 'log-line';
+                div.innerHTML = `
+                    <span class="log-timestamp">${getTimestamp()}</span>
+                    <span class="log-tag ${tagInfo.class}">${tagInfo.text}</span>
+                    <span class="log-content" style="color: var(--accent-red)">${contentText}</span>
+                `;
+                terminalBody.appendChild(div);
+            } else {
+                const tagInfo = determineTag(message);
+                const contentText = stripTag(message);
+                
+                const div = document.createElement('div');
+                div.className = 'log-line';
+                div.innerHTML = `
+                    <span class="log-timestamp">${getTimestamp()}</span>
+                    <span class="log-tag ${tagInfo.class}">${tagInfo.text}</span>
+                    <span class="log-content">${contentText}</span>
+                `;
+                terminalBody.appendChild(div);
+            }
+
+            terminalBody.scrollTop = terminalBody.scrollHeight;
+        }
+
+        function addErrorLog(message) {
+            const div = document.createElement('div');
+            div.className = 'log-error-box';
+            div.innerHTML = `<i class="ph-bold ph-warning-circle" style="font-size:24px"></i> <span>${message}</span>`;
+            terminalBody.appendChild(div);
+            terminalBody.scrollTop = terminalBody.scrollHeight;
+        }
+
+        function updateCardStatus(cardNum, status) {
+            const card = document.getElementById(`card-${cardNum}`);
+            const badge = document.getElementById(`badge-${cardNum}`);
+            
+            card.className = 'pipeline-card'; // reset
+            
+            if (status === 'active') {
+                card.classList.add('active');
+                badge.className = 'status-pill active';
+                badge.innerText = 'IN PROGRESS';
+            } else if (status === 'done') {
+                card.classList.add('done');
+                badge.className = 'status-pill done';
+                badge.innerText = 'ANALYSIS COMPLETE';
+            } else {
+                badge.className = 'status-pill pending';
+                badge.innerText = 'PENDING...';
+            }
+        }
+
+        function updatePipelineUI(step, message) {
+            // Bước 1
+            if (step === 1) {
+                updateCardStatus(1, 'active');
+            }
+            // Bước 2
+            if (step === 2) {
+                updateCardStatus(1, 'done');
+                updateCardStatus(2, 'active');
+            }
+            // Bước 3
+            if (step === 3) {
+                updateCardStatus(2, 'done');
+                updateCardStatus(3, 'active');
+            }
+            // Bước 4
+            if (step === 4) {
+                updateCardStatus(3, 'done');
+                updateCardStatus(4, 'active');
+            }
+            // Done
+            if (step === 'done') {
+                // Determine what exactly is done based on message
+                if (message.includes('AN TOÀN') || message.includes('MÃ ĐỘC')) {
+                    updateCardStatus(4, 'done');
+                } else if (message.includes('Syscalls - LỖI')) {
+                    // Fail state inside step 3
+                    const b3 = document.getElementById('badge-3');
+                    b3.className = 'status-pill';
+                    b3.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                    b3.style.color = 'var(--accent-red)';
+                    b3.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                    b3.innerText = 'FATAL ERROR';
+                }
+            }
+        }
+    </script>
+</body>
+</html>

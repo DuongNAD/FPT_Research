@@ -1,0 +1,19 @@
+FROM python:3.10-slim
+
+# Cài đặt strace và tcpdump để theo dõi syscalls và mạng
+RUN apt-get update && \
+    apt-get install -y strace tcpdump sudo && \
+    rm -rf /var/lib/apt/lists/*
+
+# [SECURITY 3] Tạo user non-root để chạy ứng dụng (chống Docker Escape)
+RUN useradd -m -s /bin/bash sandbox_user && \
+    mkdir -p /quarantine && \
+    chown -R sandbox_user:sandbox_user /quarantine
+
+# Cho phép sandbox_user chạy strace (với ptrace) mà không cần nhập password sudo
+RUN echo "sandbox_user ALL=(ALL) NOPASSWD: /usr/bin/strace, /usr/sbin/tcpdump" >> /etc/sudoers
+
+WORKDIR /sandbox
+
+# Chuyển sang user non-root mặc định
+USER sandbox_user
