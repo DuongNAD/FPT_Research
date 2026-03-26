@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Vis.js for Network Graph -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
         :root {
             --bg-base: #0a0f18; /* Nền chính tối */
@@ -513,10 +515,10 @@
         </div>
 
         <div class="nav-menu">
-            <a class="nav-item active"><i class="ph-fill ph-squares-four"></i> Dashboard</a>
+            <a id="nav-dashboard" class="nav-item active" onclick="switchTab('dashboard')"><i class="ph-fill ph-squares-four"></i> Dashboard</a>
             <a class="nav-item"><i class="ph ph-chart-line-up"></i> Pipeline</a>
             <a class="nav-item"><i class="ph ph-terminal-window"></i> Logs</a>
-            <a class="nav-item"><i class="ph ph-shield-warning"></i> Threats</a>
+            <a id="nav-threats" class="nav-item" onclick="switchTab('threats')"><i class="ph ph-shield-warning"></i> Threats</a>
             <a class="nav-item"><i class="ph ph-clock-counter-clockwise"></i> Archive</a>
         </div>
 
@@ -546,7 +548,7 @@
         </div>
 
         <!-- DASHBOARD CONTENT -->
-        <div class="dashboard-content">
+        <div id="dashboard-view" class="dashboard-content">
             
             <!-- PIPELINE -->
             <div class="pipeline-col">
@@ -619,6 +621,29 @@
             </div>
 
         </div>
+
+        <!-- THREATS VIEW (KNOWLEDGE GRAPH) -->
+        <div id="threats-view" class="dashboard-content" style="display: none;">
+            <div style="width: 350px; display: flex; flex-direction: column; gap: 20px;">
+                <div class="terminal-col" style="flex: 1;">
+                    <div class="terminal-header"><div class="terminal-title">Risk Summary</div></div>
+                    <div class="terminal-body" id="package-list" style="padding: 10px;"></div>
+                </div>
+                <div class="terminal-col" style="flex: 1;">
+                    <div class="terminal-header"><div class="terminal-title" style="color: var(--accent-red);">Blacklist Engine</div></div>
+                    <div class="terminal-body" id="blacklist-container" style="padding: 10px;"></div>
+                </div>
+            </div>
+            
+            <div class="terminal-col" style="flex: 1;">
+                <div class="terminal-header">
+                    <div class="terminal-title"><i class="ph ph-share-network"></i> Knowledge Graph AI Mapping</div>
+                </div>
+                <!-- Vùng vẽ đồ thị Vis.js -->
+                <div id="network-graph" style="height: 100%; width: 100%; background-color: #0d131f;"></div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -767,6 +792,113 @@
                     b3.innerText = 'FATAL ERROR';
                 }
             }
+        }
+
+        function switchTab(tabName) {
+            document.getElementById('nav-dashboard').classList.remove('active');
+            document.getElementById('nav-threats').classList.remove('active');
+            document.getElementById('dashboard-view').style.display = 'none';
+            document.getElementById('threats-view').style.display = 'none';
+            
+            if (tabName === 'dashboard') {
+                document.getElementById('nav-dashboard').classList.add('active');
+                document.getElementById('dashboard-view').style.display = 'flex';
+            } else if (tabName === 'threats') {
+                document.getElementById('nav-threats').classList.add('active');
+                document.getElementById('threats-view').style.display = 'flex';
+                loadThreatsData();
+            }
+        }
+
+        async function loadThreatsData() {
+            try {
+                const response = await fetch('/api/threats');
+                const data = await response.json();
+                renderPackages(data.summary);
+                renderGraph(data.graph);
+                
+                const blResponse = await fetch('/api/blacklist');
+                const blData = await blResponse.json();
+                renderBlacklist(blData);
+            } catch (error) {
+                console.error("Lỗi fetching data:", error);
+            }
+        }
+
+        function renderPackages(summary) {
+            const container = document.getElementById('package-list');
+            container.innerHTML = '';
+            summary.sort((a,b) => b.risk_score - a.risk_score).forEach(pkg => {
+                const color = pkg.risk_score > 0 ? 'var(--accent-red)' : 'var(--accent-green)';
+                const text = pkg.risk_score > 0 ? `RISK: ${pkg.risk_score}` : 'SAFE';
+                const div = document.createElement('div');
+                div.style.padding = '10px';
+                div.style.marginBottom = '8px';
+                div.style.border = '1px solid var(--border-color)';
+                div.style.borderRadius = '6px';
+                div.style.backgroundColor = 'var(--bg-base)';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                        <strong>${pkg.package_name}</strong>
+                        <span style="color:${color}; font-size:11px; font-weight:bold;">${text}</span>
+                    </div>
+                ` + pkg.behaviors.map(b => `<span style="font-size:10px; padding:2px 6px; background:#374151; border-radius:4px; margin-right:4px;">${b}</span>`).join('');
+                container.appendChild(div);
+            });
+        }
+
+        function renderBlacklist(blacklist) {
+            const container = document.getElementById('blacklist-container');
+            container.innerHTML = '';
+            const entries = Object.entries(blacklist);
+            if(entries.length === 0) {
+                container.innerHTML = `<span style="color:var(--text-muted)">Chưa có mã độc.</span>`;
+                return;
+            }
+            entries.forEach(([pkg, data]) => {
+                const div = document.createElement('div');
+                div.style.padding = '8px';
+                div.style.borderBottom = '1px solid var(--border-color)';
+                div.innerHTML = `<strong>${pkg}</strong><br/><span style="color:var(--text-muted); font-size:11px;">${data.reason}</span>`;
+                container.appendChild(div);
+            });
+        }
+
+        function renderGraph(graphData) {
+            const container = document.getElementById('network-graph');
+            const nodes = new vis.DataSet(graphData.nodes.map(n => {
+                let nData = { id: n.id, label: n.label, group: n.group };
+                if (n.group === 'package') {
+                    nData.shape = 'hexagon'; nData.size = 28; nData.color = '#ef4444'; 
+                    nData.font = { color: '#ffffff', size: 14, bold: true };
+                } else if (n.group === 'indicator') {
+                    nData.shape = 'ellipse'; nData.color = { background: '#1e293b', border: '#3b82f6' }; nData.borderWidth = 2;
+                    nData.font = { color: '#3b82f6', size: 12 };
+                } else if (n.group === 'behavior') {
+                    nData.shape = 'box'; nData.color = { background: '#374151', border: '#10b981' }; nData.borderWidth = 2;
+                    nData.font = { color: '#ffffff', size: 12 };
+                } else if (n.group === 'technique') {
+                    nData.shape = 'box'; nData.color = '#f59e0b';
+                    nData.font = { color: '#000000', size: 13, bold: true };
+                } else if (n.group === 'tactic') {
+                    nData.shape = 'diamond'; nData.size = 20; nData.color = { background: '#8b5cf6', border: '#ffffff' }; nData.borderWidth = 2;
+                    nData.font = { color: '#ffffff', size: 14, bold: true };
+                }
+                return nData;
+            }));
+            
+            const edges = new vis.DataSet(graphData.edges.map(e => ({
+                from: e.from, to: e.to, label: e.label,
+                font: { size: 10, color: '#9ca3af', align: 'middle', strokeWidth: 0 },
+                color: { color: 'rgba(255,255,255,0.2)', highlight: '#3b82f6' },
+                arrows: 'to', length: 150
+            })));
+            
+            new vis.Network(container, { nodes, edges }, {
+                interaction: { hover: true },
+                layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 250, nodeSpacing: 80 } },
+                physics: { hierarchicalRepulsion: { nodeDistance: 120 } }
+            });
         }
     </script>
 </body>

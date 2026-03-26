@@ -100,3 +100,16 @@ def run_in_sandbox(filename: str) -> str:
     else:
         logger.error("[Docker] Container không xuất ra được file log hoặc file rỗng! Sandbox có thể đã bị vô hiệu hóa.")
         return ""
+
+def generate_mock_syscall_log(package_name: str) -> str:
+    """MOCK function to return the path to the dummy sandbox log for the dashboard demo."""
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'syscalls'))
+    
+    if "requests-fake" in package_name:
+        log_file = os.path.join(base_dir, "requests-fake-1.0.0_syscalls.log")
+    elif "urllib3" in package_name:
+        log_file = os.path.join(base_dir, "urllib3-1.26.15_syscalls.log")
+    else:
+        log_file = os.path.join(base_dir, "requests-2.31.0_syscalls.log")
+        
+    return log_file

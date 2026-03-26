@@ -1,0 +1,15 @@
+{
+  "suspicious_activities": [
+    "Gói tin cố gắng đọc file /etc/passwd",
+    "Thiết lập kết nối ra bên ngoài thông qua wget"
+  ],
+  "network_connections": [
+    "192.168.1.100:4444"
+  ],
+  "files_accessed": [
+    "/etc/passwd",
+    "/tmp/malware.sh"
+  ],
+  "severity_score": 9,
+  "summary": "Gói tin có hành vi đáng ngờ: thu thập thông tin người dùng và kết nối tới C2 Server để Payload."
+}

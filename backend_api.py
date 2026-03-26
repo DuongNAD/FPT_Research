@@ -4,12 +4,30 @@ import httpx
 import os
 import json
 import asyncio
+from pathlib import Path
 from typing import List
 from ingestion import download_and_analyze, set_log_callback
 
 app = FastAPI(title="ShieldAI Zero-Trust PyPI Proxy")
 
 PYPI_SIMPLE_URL = "https://pypi.org/simple"
+
+DATA_DIR = Path(__file__).parent / "data" / "indicators"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+KNOWN_MALWARE_FILE = DATA_DIR / "known_malware.json"
+
+def get_known_malware():
+    if not KNOWN_MALWARE_FILE.exists():
+        return {}
+    with open(KNOWN_MALWARE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def load_threat_nodes():
+    mapped_file = DATA_DIR / "mapped_threat_nodes.json"
+    if not mapped_file.exists():
+        return []
+    with open(mapped_file, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 # Quản lý WebSocket clients kết nối tới Dashboard
 class ConnectionManager:
@@ -55,11 +73,92 @@ async def get_dashboard():
     with open("dashboard.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
+@app.get("/api/threats")
+async def get_threat_data():
+    nodes = load_threat_nodes()
+    packages = {}
+    for entry in nodes:
+        pkg = entry.get("indicator", {}).get("package_name", "Unknown")
+        if pkg not in packages:
+            packages[pkg] = {
+                "package_name": pkg,
+                "behaviors": [],
+                "techniques": [],
+                "risk_score": 0,
+                "alerts": []
+            }
+        beh_name = entry.get("behavior", {}).get("name")
+        tech_id = entry.get("technique", {}).get("id")
+        if beh_name and beh_name not in packages[pkg]["behaviors"]:
+            packages[pkg]["behaviors"].append(beh_name)
+        if tech_id and tech_id not in packages[pkg]["techniques"]:
+            packages[pkg]["techniques"].append(f"{tech_id}: {entry.get('technique', {}).get('name')}")
+            packages[pkg]["risk_score"] += 1
+            packages[pkg]["alerts"].append(f"Phát hiện {beh_name} ({tech_id})")
+
+    graph_data = {"nodes": [], "edges": []}
+    for entry in nodes:
+        pkg_name = entry.get("indicator", {}).get("package_name", "Unknown")
+        api_call = entry.get("indicator", {}).get("api", "unknown_api")
+        beh_name = entry.get("behavior", {}).get("name", "Unknown Behavior")
+        tech_id = entry.get("technique", {}).get("id", "Unknown_Tech")
+        tech_name = entry.get("technique", {}).get("name", "")
+        tac_id = entry.get("tactic", {}).get("id", "Unknown_Tac")
+        tac_name = entry.get("tactic", {}).get("name", "")
+
+        pkg_id = f"pkg_{pkg_name}"
+        ind_id = f"ind_{pkg_name}_{api_call}_{beh_name}"
+        beh_id = f"beh_{beh_name}"
+        tech_node_id = f"tech_{tech_id}"
+        tac_node_id = f"tac_{tac_id}"
+
+        if not any(n["id"] == pkg_id for n in graph_data["nodes"]):
+            graph_data["nodes"].append({"id": pkg_id, "label": pkg_name, "group": "package"})
+        if not any(n["id"] == ind_id for n in graph_data["nodes"]):
+            graph_data["nodes"].append({"id": ind_id, "label": f"Syscall:\n{api_call}", "group": "indicator"})
+        if not any(n["id"] == beh_id for n in graph_data["nodes"]):
+            graph_data["nodes"].append({"id": beh_id, "label": beh_name, "group": "behavior"})
+        if not any(n["id"] == tech_node_id for n in graph_data["nodes"]):
+            graph_data["nodes"].append({"id": tech_node_id, "label": f"MITRE:\n{tech_id}\n{tech_name}", "group": "technique"})
+        if not any(n["id"] == tac_node_id for n in graph_data["nodes"]):
+            graph_data["nodes"].append({"id": tac_node_id, "label": f"CHIẾN THUẬT:\n{tac_id}\n{tac_name}", "group": "tactic"})
+
+        def add_edge(frm, to, title):
+             if not any(e["from"] == frm and e["to"] == to for e in graph_data["edges"]):
+                 graph_data["edges"].append({"from": frm, "to": to, "label": title, "font": {"size": 10, "strokeWidth": 0}})
+
+        add_edge(pkg_id, ind_id, "THỰC THI")
+        add_edge(ind_id, beh_id, "CẢNH BÁO")
+        add_edge(beh_id, tech_node_id, "MAP_VỚI")
+        add_edge(tech_node_id, tac_node_id, "THUỘC_CHIẾN_THUẬT")
+            
+    return {"summary": list(packages.values()), "graph": graph_data}
+
+@app.get("/api/blacklist")
+async def api_get_blacklist():
+    return get_known_malware()
+
 @app.get("/simple/{package_name}/", response_class=HTMLResponse)
 async def get_package_simple(package_name: str, request: Request):
     """
     Mô phỏng PyPI simple API.
     """
+    if package_name == "shieldaidemo":
+        await manager.broadcast(json.dumps({
+            "message": f"🤖 Yêu cầu demo cài đặt gói 'shieldaidemo'. Hệ thống đang cung cấp mã độc giả lập.",
+            "step": 1
+        }))
+        fake_html = f'''
+        <!DOCTYPE html>
+        <html>
+          <body>
+            <h1>Links for shieldaidemo</h1>
+            <a href="{request.base_url}download/demo/shieldaidemo-1.0.0.tar.gz#sha256=123">shieldaidemo-1.0.0.tar.gz</a><br/>
+          </body>
+        </html>
+        '''
+        return HTMLResponse(content=fake_html)
+        
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{PYPI_SIMPLE_URL}/{package_name}/")
         if resp.status_code != 200:
@@ -84,16 +183,41 @@ async def download_package(path: str):
     """
     Bước 1 & Bước 7: Xử lý quá trình tải gói tin từ pip.
     """
-    original_url = f"https://files.pythonhosted.org/{path}"
     filename = path.split("/")[-1]
     
-    await manager.broadcast(json.dumps({
-        "message": f"[Proxy] Hệ thống đang chặn gói tin {filename} để chuẩn bị đưa vào phòng cách ly...",
-        "step": 1
-    }))
-    
-    # Bước 1-6 trong kiến trúc: Chặn, Tải về quarantine và Phân tích
-    is_safe = await download_and_analyze(original_url, filename)
+    if path.startswith("demo/shieldaidemo"):
+        local_demo_file = Path("data/demo/shieldaidemo-1.0.0.tar.gz")
+        if not local_demo_file.exists():
+             raise HTTPException(status_code=404, detail="Demo file not built yet. Run create_demo_malware.py")
+             
+        await manager.broadcast(json.dumps({
+            "message": f"[Proxy] Hệ thống đang chặn gói tin DEMO {filename} để tải vào phòng cách ly...",
+            "step": 1
+        }))
+        
+        # Bypass luồng Download logic thông thường, copy file thẳng vào quarantine để Trigger Sandbox
+        os.makedirs("quarantine", exist_ok=True)
+        quarantine_path = os.path.join("quarantine", filename)
+        import shutil
+        shutil.copy2(local_demo_file, quarantine_path)
+        
+        await manager.broadcast(json.dumps({
+            "message": f"[Ingestion] Đã đưa mã nguồn DEMO '{filename}' về vùng cách ly (Quarantine)...",
+            "step": 3
+        }))
+        
+        # Push to sandbox without actual downloading
+        is_safe = await download_and_analyze(f"http://fake_pypi/demo/{filename}", filename)
+    else:
+        original_url = f"https://files.pythonhosted.org/{path}"
+        
+        await manager.broadcast(json.dumps({
+            "message": f"[Proxy] Hệ thống đang chặn gói tin {filename} để chuẩn bị đưa vào phòng cách ly...",
+            "step": 1
+        }))
+        
+        # Bước 1-6 trong kiến trúc: Chặn, Tải về quarantine và Phân tích
+        is_safe = await download_and_analyze(original_url, filename)
     
     # Bước 7: Phán quyết (Cho phép hoặc Chặn)
     if is_safe:
