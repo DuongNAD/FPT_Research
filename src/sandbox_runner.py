@@ -61,16 +61,17 @@ def run_in_sandbox(filename: str) -> str:
             "--cap-add=SYS_PTRACE",
             "--security-opt=no-new-privileges=true",
             "--read-only",
-            "--tmpfs", "/tmp:rw,nosuid,nodev",
+            "--tmpfs", "/tmp:rw,exec,nosuid,nodev",
             "--tmpfs", "/home/sandboxuser:rw,exec,nosuid",
             DOCKER_IMAGE, "tail", "-f", "/dev/null"
         ], check=True, capture_output=True)
         
         logger.info(f"[Sandbox] 2/4: Bơm xuyên vách mã độc {filename} vào Container...")
         guest_package_path = f"/tmp/{filename}"
-        subprocess.run([
-            "docker", "cp", host_package_path, f"{container_name}:{guest_package_path}"
-        ], check=True, capture_output=True)
+        with open(host_package_path, "rb") as f:
+            subprocess.run([
+                "docker", "exec", "-i", container_name, "sh", "-c", f"cat > {guest_package_path}"
+            ], stdin=f, check=True, capture_output=True)
         
         # BƯỚC 3: KÍCH NỔ (Detonate)
         logger.info("[Sandbox] 3/4: Khởi động Network Monitor Sidecar và KÍCH NỔ...")
@@ -87,9 +88,11 @@ def run_in_sandbox(filename: str) -> str:
         ], check=True, capture_output=True)
         
         # Lệnh chạy bên trong container chính (Chỉ gồm strace)
+        # Tạo venv trên tmp RAM disk để cài đặt không bị vướng lỗi môi trường/đường dẫn
         detonate_cmd = (
+            f"python -m venv /tmp/venv && "
             f"timeout 120s strace -f -s 256 -e trace=file,network,process "
-            f"-o {guest_log_path} pip install --user {guest_package_path} --no-index --find-links /tmp/ ; "
+            f"-o {guest_log_path} /tmp/venv/bin/pip install {guest_package_path} --no-index --find-links /tmp/ ; "
             f"sleep 2 ; "
             f"chmod 777 {guest_log_path} || true"
         )
@@ -107,14 +110,16 @@ def run_in_sandbox(filename: str) -> str:
 
         # BƯỚC 4: Hút bằng chứng
         logger.info("[Sandbox] 4/4: Hút bằng chứng (.log, .pcap) trả về máy Host...")
-        subprocess.run([
-            "docker", "cp", f"{container_name}:{guest_log_path}", host_log_path
-        ], capture_output=True)
+        with open(host_log_path, "wb") as f:
+            subprocess.run([
+                "docker", "exec", container_name, "cat", guest_log_path
+            ], stdout=f, check=False)
         
         # Hút file mạng từ vùng Out-of-Band
-        subprocess.run([
-            "docker", "cp", f"{sidecar_name}:{guest_pcap_path}", host_pcap_path
-        ], capture_output=True)
+        with open(host_pcap_path, "wb") as f:
+            subprocess.run([
+                "docker", "exec", sidecar_name, "cat", guest_pcap_path
+            ], stdout=f, check=False)
         
     except subprocess.CalledProcessError as e:
         logger.error(f"Lệnh Docker thất bại. Lỗi: {e.stderr if isinstance(e.stderr, str) else e}")

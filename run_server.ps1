@@ -19,5 +19,11 @@ foreach($line in Get-Content $envFile) {
 }
 
 Write-Host "[ShieldAI] Khoi dong he thong Backend Proxy..." -ForegroundColor Green
+
+# Thiết lập rõ ràng môi trường ảo VENV cho hệ thống nhận diện
+$env:VIRTUAL_ENV = Join-Path $rootDir "venv"
+$env:PATH = "$(Join-Path $rootDir 'venv\Scripts');$env:PATH"
+
 Set-Location $rootDir
-.\venv\Scripts\python.exe backend_api.py
+# Khởi động thẳng bằng Python (đã kích hoạt qua PATH ảo)
+python backend_api.py

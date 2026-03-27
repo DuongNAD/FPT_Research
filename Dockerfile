@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Cấu hình trao quyền truy cập tài nguyên kernel tối thiểu cho tcpdump và strace
-RUN setcap cap_net_raw,cap_net_admin=eip /usr/sbin/tcpdump
+RUN setcap cap_net_raw,cap_net_admin=eip /usr/bin/tcpdump
 # Đôi khi strace đòi hỏi quyền gắn trình gỡ lỗi (ptrace)
 RUN setcap cap_sys_ptrace=eip /usr/bin/strace
 

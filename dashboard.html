@@ -234,10 +234,17 @@
 
         /* --- PIPELINE COLUMN --- */
         .pipeline-col {
-            width: 320px;
+            width: 340px;
             display: flex;
             flex-direction: column;
+            overflow-y: auto;
+            padding-right: 16px;
         }
+        
+        .pipeline-col::-webkit-scrollbar { width: 4px; }
+        .pipeline-col::-webkit-scrollbar-track { background: transparent; }
+        .pipeline-col::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .pipeline-col::-webkit-scrollbar-thumb:hover { background: #475569; }
 
         .col-header {
             display: flex;
@@ -281,12 +288,25 @@
             background-color: var(--bg-panel);
             border: 1px solid var(--border-color);
             border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 16px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
             border-left: 4px solid #374151;
-            transition: all 0.3s ease;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
+            cursor: pointer;
+        }
+
+        .pipeline-card:hover {
+            border-color: #4b5563;
+        }
+
+        .pipeline-card.viewing {
+            border-color: rgba(96, 165, 250, 0.6);
+            background-color: rgba(15, 23, 42, 0.95);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+            transform: translateX(6px);
+            z-index: 10;
         }
 
         .pipeline-card.active {
@@ -303,7 +323,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 6px;
         }
 
         .step-num {
@@ -342,7 +362,7 @@
         .pipeline-card h4 {
             font-size: 15px;
             font-weight: 600;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
 
         .progress-bar {
@@ -593,16 +613,16 @@
                     <div class="live-dot">LIVE</div>
                 </div>
 
-                <div id="card-1" class="pipeline-card active">
+                <div id="card-1" class="pipeline-card active" onclick="selectStep(1)">
                     <div class="card-header">
                         <span class="step-num">STEP 01</span>
                         <span id="badge-1" class="status-pill active">INGESTING</span>
                     </div>
-                    <h4>Proxy Ingestion</h4>
+                    <h4>Packet Ingestion</h4>
                     <div class="progress-bar"><div class="progress-fill"></div></div>
                 </div>
 
-                <div id="card-2" class="pipeline-card">
+                <div id="card-2" class="pipeline-card" onclick="selectStep(2)">
                     <div class="card-header">
                         <span class="step-num">STEP 02</span>
                         <span id="badge-2" class="status-pill pending">PENDING...</span>
@@ -611,7 +631,7 @@
                     <div class="progress-bar"><div class="progress-fill"></div></div>
                 </div>
 
-                <div id="card-3" class="pipeline-card">
+                <div id="card-3" class="pipeline-card" onclick="selectStep(3)">
                     <div class="card-header">
                         <span class="step-num">STEP 03</span>
                         <span id="badge-3" class="status-pill pending">PENDING...</span>
@@ -620,12 +640,39 @@
                     <div class="progress-bar"><div class="progress-fill"></div></div>
                 </div>
 
-                <div id="card-4" class="pipeline-card">
+                <div id="card-4" class="pipeline-card" onclick="selectStep(4)">
                     <div class="card-header">
-                        <span class="step-num">STEPS 04-06</span>
+                        <span class="step-num">STEP 04</span>
                         <span id="badge-4" class="status-pill pending">PENDING...</span>
                     </div>
-                    <h4>AI Analysis</h4>
+                    <h4>LLM Analysis</h4>
+                    <div class="progress-bar"><div class="progress-fill"></div></div>
+                </div>
+
+                <div id="card-5" class="pipeline-card" onclick="selectStep(5)">
+                    <div class="card-header">
+                        <span class="step-num">STEP 05</span>
+                        <span id="badge-5" class="status-pill pending">PENDING...</span>
+                    </div>
+                    <h4>Normalized Output</h4>
+                    <div class="progress-bar"><div class="progress-fill"></div></div>
+                </div>
+
+                <div id="card-6" class="pipeline-card" onclick="selectStep(6)">
+                    <div class="card-header">
+                        <span class="step-num">STEP 06</span>
+                        <span id="badge-6" class="status-pill pending">PENDING...</span>
+                    </div>
+                    <h4>AI Agent Debate</h4>
+                    <div class="progress-bar"><div class="progress-fill"></div></div>
+                </div>
+
+                <div id="card-7" class="pipeline-card" onclick="selectStep(7)">
+                    <div class="card-header">
+                        <span class="step-num">STEP 07</span>
+                        <span id="badge-7" class="status-pill pending">PENDING...</span>
+                    </div>
+                    <h4>Final Verdict</h4>
                     <div class="progress-bar"><div class="progress-fill"></div></div>
                 </div>
             </div>
@@ -634,7 +681,7 @@
             <div class="terminal-col">
                 <div class="terminal-header">
                     <div class="terminal-title">
-                        <i class="ph ph-terminal-window"></i> Live System Stream
+                        <i class="ph ph-terminal-window"></i> <span id="log-panel-title">Live System Stream</span> (Toàn bộ)
                     </div>
                     <div class="terminal-actions">
                         <button class="btn-small" onclick="resetPipeline()" style="background:rgba(239,68,68,0.2); color:#ef4444; border-color:rgba(239,68,68,0.5);"><i class="ph-bold ph-arrows-counter-clockwise"></i> Reset</button>
@@ -696,10 +743,11 @@
                 
                 // Auto-sync UI states cleanly 
                 if (data.message.includes('Bắt đầu chặn luồng tải nội dung từ PyPI')) {
-                    for (let i = 1; i <= 4; i++) { const card = document.getElementById(`card-${i}`); const badge = document.getElementById(`badge-${i}`); if (card && badge) { card.className = 'pipeline-card'; badge.className = 'status-pill pending'; badge.innerText = 'PENDING...'; } }
+                    for (let i = 1; i <= 7; i++) { const card = document.getElementById(`card-${i}`); const badge = document.getElementById(`badge-${i}`); if (card && badge) { card.className = 'pipeline-card'; badge.className = 'status-pill pending'; badge.innerText = 'PENDING...'; } }
                     document.getElementById('card-1').classList.add('active');
                     document.getElementById('badge-1').className = 'status-pill active';
                     document.getElementById('badge-1').innerText = 'INGESTING';
+                    selectStep('all'); // Reset Tab View
                 }
                 
                 // Giữ nút Approve luôn hiện ở mode Interactive, chỉ thay đổi opacity để làm mờ khi không cần thiết
@@ -756,9 +804,12 @@
             // Nếu là lỗi đặc biệt nghiêm trọng, hiển thị kiểu Alert Box theo đúng design
             if (isError && message.includes('[Syscalls - LỖI]')) {
                 const tagInfo = determineTag(message);
-                const contentText = stripTag(message);
                 const div = document.createElement('div');
                 div.className = 'log-line';
+                // Ánh xạ step ngầm thành step 7 
+                let resolvedStep = (step === 'done') ? 7 : (step || 'all');
+                div.dataset.step = resolvedStep;
+                
                 div.innerHTML = `
                     <span class="log-timestamp">${getTimestamp()}</span>
                     <span class="log-tag ${tagInfo.class}">${tagInfo.text}</span>
@@ -775,6 +826,9 @@
                 
                 const div = document.createElement('div');
                 div.className = 'log-line';
+                let resolvedStep = (step === 'done') ? 7 : (step || 'all');
+                div.dataset.step = resolvedStep;
+
                 div.innerHTML = `
                     <span class="log-timestamp">${getTimestamp()}</span>
                     <span class="log-tag ${tagInfo.class}">${tagInfo.text}</span>
@@ -782,15 +836,52 @@
                 `;
                 terminalBody.appendChild(div);
             }
+            
+            // Re-apply filter if needed
+            applyStepFilter();
+            terminalBody.scrollTop = terminalBody.scrollHeight;
+        }
 
+        let currentActiveTab = 'all';
+        function selectStep(stepNum) {
+            currentActiveTab = stepNum;
+            const titles = {
+                1: "Packet Ingestion Logs", 2: "Sandbox Execution Logs", 3: "Syscalls Capture Logs",
+                4: "LLM Analysis Logs", 5: "Normalized Output Logs", 6: "AI Agent Debate Logs", 7: "Final Verdict Logs", 'all': "Live System Stream"
+            };
+            
+            document.getElementById('log-panel-title').innerHTML = titles[stepNum] || "Live System Stream";
+            
+            // Styling cards
+            for(let i=1; i<=7; i++) {
+                const card = document.getElementById(`card-${i}`);
+                if(card) {
+                    if(i === stepNum) card.classList.add('viewing');
+                    else card.classList.remove('viewing');
+                }
+            }
+            applyStepFilter();
+        }
+
+        function applyStepFilter() {
+            const lines = document.querySelectorAll('.log-line, .log-error-box');
+            lines.forEach(line => {
+                if(currentActiveTab === 'all' || line.dataset.step === String(currentActiveTab) || line.dataset.step === 'all') {
+                    line.style.display = 'flex';
+                } else {
+                    line.style.display = 'none';
+                }
+            });
             terminalBody.scrollTop = terminalBody.scrollHeight;
         }
 
         function addErrorLog(message) {
             const div = document.createElement('div');
             div.className = 'log-error-box';
+            div.dataset.step = 'all';
             div.innerHTML = `<i class="ph-bold ph-warning-circle" style="font-size:24px"></i> <span>${message}</span>`;
             terminalBody.appendChild(div);
+            applyStepFilter();
             terminalBody.scrollTop = terminalBody.scrollHeight;
         }
 
@@ -815,38 +906,31 @@
         }
 
         function updatePipelineUI(step, message) {
-            // Bước 1
-            if (step === 1) {
-                updateCardStatus(1, 'active');
+            if (step >= 1 && step <= 7) {
+                // Mark previous step as done
+                if (step > 1) updateCardStatus(step - 1, 'done');
+                // Mark current step as active
+                updateCardStatus(step, 'active');
             }
-            // Bước 2
-            if (step === 2) {
-                updateCardStatus(1, 'done');
-                updateCardStatus(2, 'active');
-            }
-            // Bước 3
-            if (step === 3) {
-                updateCardStatus(2, 'done');
-                updateCardStatus(3, 'active');
-            }
-            // Bước 4
-            if (step === 4) {
-                updateCardStatus(3, 'done');
-                updateCardStatus(4, 'active');
-            }
-            // Done
+            
+            // Done state (Verdict)
             if (step === 'done') {
-                // Determine what exactly is done based on message
+                updateCardStatus(6, 'done');
+                updateCardStatus(7, 'active'); // Mark verdict step visually active/done based on message
+                
                 if (message.includes('AN TOÀN') || message.includes('MÃ ĐỘC')) {
-                    updateCardStatus(4, 'done');
+                    updateCardStatus(7, 'done');
                 } else if (message.includes('Syscalls - LỖI')) {
                     // Fail state inside step 3
+                    updateCardStatus(2, 'done');
                     const b3 = document.getElementById('badge-3');
-                    b3.className = 'status-pill';
-                    b3.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
-                    b3.style.color = 'var(--accent-red)';
-                    b3.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                    b3.innerText = 'FATAL ERROR';
+                    if (b3) {
+                        b3.className = 'status-pill';
+                        b3.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                        b3.style.color = 'var(--accent-red)';
+                        b3.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                        b3.innerText = 'FATAL ERROR';
+                    }
                 }
             }
         }
@@ -1013,8 +1097,8 @@
         }
 
         function resetPipeline() {
-            document.getElementById('terminal-body').innerHTML = '<div class="log-line"><span class="log-timestamp">' + getTimestamp() + '</span><span class="log-tag tag-proxy">[System]</span><span class="log-content" style="color:#10b981">Hệ thống đã được lập lại (Reset). Sẵn sàng bắt gói tin mới từ Proxy...</span></div>';
-            for (let i = 1; i <= 4; i++) {
+            document.getElementById('terminal-body').innerHTML = '<div class="log-line" data-step="all"><span class="log-timestamp">' + getTimestamp() + '</span><span class="log-tag tag-proxy">[System]</span><span class="log-content" style="color:#10b981">Hệ thống đã được lập lại (Reset). Sẵn sàng bắt gói tin mới từ Proxy...</span></div>';
+            for (let i = 1; i <= 7; i++) {
                 const card = document.getElementById(`card-${i}`);
                 const badge = document.getElementById(`badge-${i}`);
                 if (card && badge) {
@@ -1029,6 +1113,8 @@
                     }
                 }
             }
+            selectStep('all');
+
             if (isInteractive) {
                 document.getElementById('btn-approve').style.display = 'inline-block';
                 document.getElementById('btn-approve').style.opacity = '0.5';

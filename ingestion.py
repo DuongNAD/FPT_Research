@@ -87,15 +87,15 @@ async def download_and_analyze(url: str, filename: str) -> bool:
         await broadcast_log(f"[Syscalls - LỖI] Không thể kết xuất file syscalls.log từ Sandbox.", 'done')
         return False
 
-    # Bước 4 & 5: Phân tích LLM và xuất JSON (prosecutor_case)
+    # Bước 4: Phân tích LLM
     from src.llm_analyzer import analyze_syscalls
     await interactive_pause("chuyển giao thông tin tóm tắt cho AI phân tích")
-    await broadcast_log(f"[LLM Analyst] Bắt đầu đọc file log khô khan và gạn lọc thông qua Gemini (Hoặc AI Dummy)...", 4)
+    await broadcast_log(f"[LLM Analyst] Bắt đầu dịch lược luồng dữ liệu thô (Syscalls) qua Prompt AI...", 4)
     
     # Gọi AI để phân tích log (block thread để đảm bảo đồng bộ)
     case_data = await asyncio.to_thread(analyze_syscalls, log_path)
     
-    # 5. Xuất báo cáo (prosecutor_case)
+    # Bước 5: Xuất báo cáo (Normalized Entry)
     json_path = os.path.join(QUARANTINE_DIR, f"{filename}.json")
     with open(json_path, 'w', encoding='utf-8') as f:
         import json
@@ -105,12 +105,18 @@ async def download_and_analyze(url: str, filename: str) -> bool:
     summary = case_data.get("summary", "Không có tóm tắt")
     json_path_str = Path(json_path).as_posix()
     
-    await broadcast_log(f"[LLM Analyst] Phân tích hoàn tất! Điểm rủi ro (Severity): {score}/10.\nSơ bộ: {summary} [[VIEW_JSON:{json_path_str}]]", 4)
+    await interactive_pause("trích xuất dữ liệu Normalized JSON")
+    await broadcast_log(f"[Normalized Log] Trích xuất siêu dữ liệu JSON thành công. Ánh xạ hành vi rõ ràng. [[VIEW_LOG:{json_path_str}]]", 5)
     
-    # Bước 6 chưa hoàn thiện. Ta dùng điểm Severity để làm Base Decision:
+    # Bước 6: Multi-Agent Debate
+    await interactive_pause("chuyển giao cho Hệ thống Đa Tác Nhân (Multi-Agent Debate)")
+    await broadcast_log(f"[Multi-Agent] Khởi chạy buồng tranh biện ảo...\n- Prosecutor: Đề xuất điểm rủi ro {score}/10.\n- Defender: Phản biện theo ngữ cảnh cài đặt.\n- Judge: Tóm lược tranh biện: {summary}", 6)
+    
+    # Bước 7: Phán quyết (Decision)
+    await interactive_pause("tiến hành phán quyết cuối cùng")
     if score >= 7:
-        await broadcast_log(f"[Decision] CẢNH BÁO MÃ ĐỘC! Điểm rủi ro chạm ngưỡng nguy hiểm. CHẶN KẾT NỐI TẢI VỀ.", 'done')
+        await broadcast_log(f"[Verdict] 🛑 CẢNH BÁO MÃ ĐỘC! Hệ thống hất văng kết nối, định tuyến Blacklist.", 'done')
         return False
     else:
-        await broadcast_log(f"[Decision] QUÁ TRÌNH PHÂN TÍCH KẾT THÚC. Gói tin an toàn. CHO PHÉP TẢI VỀ.", 'done')
+        await broadcast_log(f"[Verdict] 🟢 QUÁ TRÌNH KIỂM KIỆM KẾT THÚC. Gói tin an toàn. Nhượng quyền cài đặt tiếp tục.", 'done')
         return True

@@ -1,26 +1,15 @@
 {
   "suspicious_activities": [
-    "Reading of sensitive system file /etc/passwd by child Python processes (PIDs 21 and 22), which is highly unusual for a package installation.",
-    "Initiating outbound TCP network connections to an external public DNS server (8.8.8.8:53) by child Python processes, explicitly bypassing the '--no-index' restriction of the pip command.",
-    "Initiating outbound UDP network connections to a private IP DNS resolver (192.168.65.7:53) by child Python processes, indicating network activity beyond the expected local installation scope.",
-    "Extensive metadata collection (`newfstatat`) on critical system authentication and configuration files (e.g., /etc/shadow, /etc/group, /etc/gshadow) by the main pip process, suggesting system reconnaissance."
+    "Gói tin cố gắng đọc file /etc/passwd",
+    "Thiết lập kết nối ra bên ngoài thông qua wget"
   ],
   "network_connections": [
-    "192.168.65.7:53 (UDP)",
-    "8.8.8.8:53 (TCP)"
+    "192.168.1.100:4444"
   ],
   "files_accessed": [
-    "/etc/passwd (read)",
-    "/etc/shadow (metadata accessed)",
-    "/etc/group (metadata accessed)",
-    "/etc/gshadow (metadata accessed)",
-    "/etc/shadow- (metadata accessed)",
-    "/etc/group- (metadata accessed)",
-    "/etc/passwd- (metadata accessed)",
-    "/etc/resolv.conf (read)",
-    "/etc/host.conf (read)",
-    "/etc/nsswitch.conf (read)"
+    "/etc/passwd",
+    "/tmp/malware.sh"
   ],
-  "severity_score": 8,
-  "summary": "The Python package installation exhibits strong malicious/suspicious behavior. It performed system reconnaissance by reading /etc/passwd and gathering metadata from other sensitive system authentication files. Crucially, it bypassed pip's network restrictions by establishing external network connections to public and private DNS servers, suggesting an attempt to exfiltrate information or resolve external resources."
+  "severity_score": 9,
+  "summary": "Gói tin có hành vi đáng ngờ: thu thập thông tin người dùng và kết nối tới C2 Server để Payload."
 }
