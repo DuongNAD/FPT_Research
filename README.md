@@ -69,8 +69,17 @@ pip install -r requirements.txt
 Mở trình duyệt Web của bạn và truy cập: 👉 **[http://localhost:8000/dashboard](http://localhost:8000/dashboard)**
 > Giao diện điều khiển 3D Cyber Security với hiển thị Phân rã 7 Bước (7-Step Pipeline) và Sơ đồ Đồ thị Tri thức (Knowledge Graph) đã sẵn sàng.
 
-### 5. Cú pháp Kiểm thử (Dành cho Máy khách / Nạn nhân)
-Để yêu cầu hệ thống tải và kiểm duyệt một thư viện (Ví dụ: `shieldaidemo`), hãy mở một cửa sổ Terminal khác và gõ:
+### 5. Cú pháp Kiểm thử Cơ bản (Dành cho Máy khách / Nạn nhân)
+Hệ thống đã chuẩn bị sẵn một tập lệnh tạo "Mã độc giả lập vô hại" (Safe Demo Malware). Mã độc này sẽ cố gắng kết nối mạng và đọc `/etc/passwd` trong Sandbox nhưng hoàn toàn không phá hoại máy thật của bạn.
+
+Trước tiên, hãy tạo gói mã độc nội bộ này chèn vào Proxy:
+```powershell
+# Mở một cửa sổ Terminal khác và chạy:
+.\venv\Scripts\python.exe create_demo_malware.py
+```
+*(Gói sẽ được tự động tạo tại `data/demo/shieldaidemo-1.0.0.tar.gz`)*
+
+Bây giờ, đóng vai một nạn nhân bị lừa gõ cài đặt gói `shieldaidemo`:
 ```powershell
 .\venv\Scripts\pip.exe install --default-timeout=200 --index-url http://localhost:8000/simple/ shieldaidemo
 ```
