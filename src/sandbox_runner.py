@@ -37,13 +37,32 @@ def run_in_sandbox(filename: str) -> str:
     logger.info(f"Đang kích hoạt Docker Sandbox cho siêu gói tin: {filename}")
     
     container_name = f"sandbox_{run_id}"
+    sidecar_name = f"sniffer_{run_id}"
     
     try:
+        # Tự tạo Mạng cô lập shield_net nếu chưa có
+        subprocess.run([
+            "docker", "network", "create", 
+            "--driver", "bridge", 
+            "--subnet", "172.25.0.0/16", 
+            "--opt", "com.docker.network.bridge.name=shield_br",
+            "shield_net"
+        ], capture_output=True) # Ignore error if exists
+
         # BƯỚC 1 & 2: Khởi tạo container và giữ nó chạy ngầm
         logger.info(f"[Sandbox] 1/4: Đang tạo Docker Container mới ({container_name})...")
         subprocess.run([
             "docker", "run", "-d", "--name", container_name,
-            "--privileged",  # Cần thiết cho strace
+            "--network=shield_net",
+            "--cpus=1.0",
+            "--memory=1g",
+            "--pids-limit=100",
+            "--cap-drop=ALL",
+            "--cap-add=SYS_PTRACE",
+            "--security-opt=no-new-privileges=true",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,nosuid,nodev",
+            "--tmpfs", "/home/sandboxuser:rw,exec,nosuid",
             DOCKER_IMAGE, "tail", "-f", "/dev/null"
         ], check=True, capture_output=True)
         
@@ -54,19 +73,25 @@ def run_in_sandbox(filename: str) -> str:
         ], check=True, capture_output=True)
         
         # BƯỚC 3: KÍCH NỔ (Detonate)
-        logger.info("[Sandbox] 3/4: KÍCH NỔ và bắt Syscalls (Áp dụng Timeout 120s)...")
+        logger.info("[Sandbox] 3/4: Khởi động Network Monitor Sidecar và KÍCH NỔ...")
         guest_log_path = f"/tmp/{log_filename}"
         guest_pcap_path = f"/tmp/{pcap_filename}"
         
-        # Lệnh chạy bên trong container
+        logger.info(f"[Monitor] Chạy Sidecar Container ({sidecar_name}) để thu thập pcap Out-of-Band...")
+        subprocess.run([
+            "docker", "run", "-d", "--name", sidecar_name,
+            "--network", f"container:{container_name}",
+            "--cap-drop=ALL",
+            "--cap-add=NET_RAW", "--cap-add=NET_ADMIN",
+            DOCKER_IMAGE, "tcpdump", "-i", "any", "-w", guest_pcap_path
+        ], check=True, capture_output=True)
+        
+        # Lệnh chạy bên trong container chính (Chỉ gồm strace)
         detonate_cmd = (
-            f"tcpdump -i any -w {guest_pcap_path} & "
-            f"TCP_PID=$! ; "
             f"timeout 120s strace -f -s 256 -e trace=file,network,process "
-            f"-o {guest_log_path} pip install {guest_package_path} --no-index --find-links /tmp/ ; "
-            f"kill -2 $TCP_PID ; sleep 2 ; "
-            f"chmod 777 {guest_log_path} || true ; "
-            f"chmod 777 {guest_pcap_path} || true"
+            f"-o {guest_log_path} pip install --user {guest_package_path} --no-index --find-links /tmp/ ; "
+            f"sleep 2 ; "
+            f"chmod 777 {guest_log_path} || true"
         )
         
         try:
@@ -76,14 +101,19 @@ def run_in_sandbox(filename: str) -> str:
         except subprocess.TimeoutExpired:
             logger.warning("[Sandbox] Lệnh kích nổ đã chạy hết 140s giới hạn cứng!")
             
+        # Chốt file capture trên sidecar
+        subprocess.run(["docker", "kill", "--signal=SIGINT", sidecar_name], capture_output=True)
+        time.sleep(2)
+
         # BƯỚC 4: Hút bằng chứng
         logger.info("[Sandbox] 4/4: Hút bằng chứng (.log, .pcap) trả về máy Host...")
         subprocess.run([
             "docker", "cp", f"{container_name}:{guest_log_path}", host_log_path
         ], capture_output=True)
         
+        # Hút file mạng từ vùng Out-of-Band
         subprocess.run([
-            "docker", "cp", f"{container_name}:{guest_pcap_path}", host_pcap_path
+            "docker", "cp", f"{sidecar_name}:{guest_pcap_path}", host_pcap_path
         ], capture_output=True)
         
     except subprocess.CalledProcessError as e:
@@ -92,8 +122,9 @@ def run_in_sandbox(filename: str) -> str:
         logger.error(f"Lỗi nghiêm trọng kiểm soát Docker: {e}")
     finally:
         # BƯỚC 5: Xóa container (Clearing State)
-        logger.info("[Sandbox] Xóa sạch tàn dư (Remove Container)...")
+        logger.info("[Sandbox] Xóa sạch tàn dư (Remove Container và Sidecar)...")
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+        subprocess.run(["docker", "rm", "-f", sidecar_name], capture_output=True)
         
     # Xác minh log
     if os.path.exists(host_log_path) and os.path.getsize(host_log_path) > 0:
