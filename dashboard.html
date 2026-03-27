@@ -753,7 +753,7 @@
                 // Giữ nút Approve luôn hiện ở mode Interactive, chỉ thay đổi opacity để làm mờ khi không cần thiết
                 if (data.step === 'pause') {
                     document.getElementById('btn-approve').style.opacity = '1';
-                    document.getElementById('btn-approve').style.animation = 'blink 1.5s infinite';
+                    document.getElementById('btn-approve').style.animation = 'none';
                 }
                 if (data.step === 'resume') {
                     document.getElementById('btn-approve').style.opacity = '0.5';
@@ -918,8 +918,24 @@
                 updateCardStatus(6, 'done');
                 updateCardStatus(7, 'active'); // Mark verdict step visually active/done based on message
                 
-                if (message.includes('AN TOÀN') || message.includes('MÃ ĐỘC')) {
+                if (message.includes('AN TOÀN')) {
                     updateCardStatus(7, 'done');
+                    const b7 = document.getElementById('badge-7');
+                    if (b7) b7.innerText = 'AN TOÀN';
+                } else if (message.includes('MÃ ĐỘC')) {
+                    updateCardStatus(7, 'done');
+                    const b7 = document.getElementById('badge-7');
+                    if (b7) {
+                        b7.className = 'status-pill';
+                        b7.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                        b7.style.color = 'var(--accent-red)';
+                        b7.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                        b7.innerText = 'MÃ ĐỘC';
+                        
+                        // Nếu có mã độc thì Card viền đỏ cũng đẹp để báo động
+                        const c7 = document.getElementById('card-7');
+                        if (c7) c7.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+                    }
                 } else if (message.includes('Syscalls - LỖI')) {
                     // Fail state inside step 3
                     updateCardStatus(2, 'done');

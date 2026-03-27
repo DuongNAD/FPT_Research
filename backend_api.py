@@ -257,15 +257,21 @@ async def download_package(path: str):
     
     # Bước 7: Phán quyết (Cho phép hoặc Chặn)
     if is_safe:
+        with open("clean_packages.txt", "a", encoding="utf-8") as f:
+            f.write(f"{filename}\n")
+            
         quarantine_path = os.path.join("quarantine", filename)
         await manager.broadcast(json.dumps({
-            "message": f"[Proxy] Trả về gói {filename} cho client do an toàn.",
+            "message": f"[Proxy] Trả về gói {filename} cho client do có đánh giá AN TOÀN.",
             "step": "done"
         }))
         return FileResponse(quarantine_path, media_type="application/octet-stream", filename=filename)
     else:
+        with open("malicious_packages.txt", "a", encoding="utf-8") as f:
+            f.write(f"{filename}\n")
+            
         await manager.broadcast(json.dumps({
-            "message": f"[Proxy] Ngắt kết nối cài đặt. Gói bị hệ thống từ chối.",
+            "message": f"[Proxy] Ngắt kết nối cài đặt. Gói {filename} bị hệ thống từ chối vì chứa MÃ ĐỘC.",
             "step": "done"
         }))
         raise HTTPException(status_code=403, detail="ShieldAI Blocked: Gói tin nghi ngờ chứa mã độc (Malware).")

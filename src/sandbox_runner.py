@@ -74,7 +74,7 @@ def run_in_sandbox(filename: str) -> str:
             ], stdin=f, check=True, capture_output=True)
         
         # BƯỚC 3: KÍCH NỔ (Detonate)
-        logger.info("[Sandbox] 3/4: Khởi động Network Monitor Sidecar và KÍCH NỔ...")
+        logger.info("[Sandbox] 3/4: Khởi động Network Monitor Sidecar và KÍCH HOẠT MÃ ĐỘC TRONG SANDBOX...")
         guest_log_path = f"/tmp/{log_filename}"
         guest_pcap_path = f"/tmp/{pcap_filename}"
         
@@ -102,7 +102,7 @@ def run_in_sandbox(filename: str) -> str:
                 "docker", "exec", container_name, "/bin/bash", "-c", detonate_cmd
             ], capture_output=True, timeout=140)
         except subprocess.TimeoutExpired:
-            logger.warning("[Sandbox] Lệnh kích nổ đã chạy hết 140s giới hạn cứng!")
+            logger.warning("[Sandbox] Lệnh kích hoạt đã chạy hết 140s giới hạn cứng!")
             
         # Chốt file capture trên sidecar
         subprocess.run(["docker", "kill", "--signal=SIGINT", sidecar_name], capture_output=True)

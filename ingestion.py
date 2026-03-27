@@ -90,7 +90,7 @@ async def download_and_analyze(url: str, filename: str) -> bool:
     # Bước 4: Phân tích LLM
     from src.llm_analyzer import analyze_syscalls
     await interactive_pause("chuyển giao thông tin tóm tắt cho AI phân tích")
-    await broadcast_log(f"[LLM Analyst] Bắt đầu dịch lược luồng dữ liệu thô (Syscalls) qua Prompt AI...", 4)
+    await broadcast_log(f"[LLM Analyst] Bắt đầu dịch lược luồng dữ liệu thô (Syscalls) qua AI (API)...", 4)
     
     # Gọi AI để phân tích log (block thread để đảm bảo đồng bộ)
     case_data = await asyncio.to_thread(analyze_syscalls, log_path)
