@@ -41,28 +41,43 @@ Dự án được triển khai toàn diện qua 10 giai đoạn (Phases) đột 
 
 ---
 
-## 🚀 Hướng Dẫn Kích Hoạt (Getting Started)
+## 🚀 Hướng Dẫn Kích Hoạt (Installation & Usage)
 
-### 1. Cài đặt Môi Trường
+### 1. Yêu cầu Hệ thống (Prerequisites)
+- **Windows / Linux** đã cài đặt Python 3.9+
+- **Docker Engine / Docker Desktop (WSL2)** để chạy hạt nhân cách ly (Sandbox).
+
+### 2. Khởi tạo Không gian Cách ly (Build Sandbox)
+Trước khi chạy hệ thống, bạn bắt buộc phải tạo Image cho Sandbox chứa cấu hình Zero-Trust và các công cụ phân tích mạng (tcpdump, strace):
 ```powershell
-# Chạy trong thư mục gốc
+# Chạy lệnh này tại thư mục gốc của dự án
+docker build -t shieldai-sandbox:latest -f Dockerfile .
+```
+
+### 3. Cài đặt Thư viện & Bật Proxy Trung tâm
+Hệ thống sử dụng môi trường ảo hóa Python (venv) để tránh xung đột thư viện:
+```powershell
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
 
-### 2. Khởi động Web Dashboard & Trạm chặn mã độc (Proxy)
-Tất cả đã được thiết kế All-in-One tại file `backend_api.py`.
-```powershell
-python src\backend_api.py
+# Khởi động Backend API (Chạy trạm kiểm soát)
+.\run_server.ps1
 ```
-> Trạm gác đã mở tại: **http://localhost:8000**. Giao diện 3D Cyber Security đã sẵn sàng.
+*Trạm gác Proxy và AI Agent sẽ hoạt động và lắng nghe tại cổng: `http://localhost:8000`*
 
-### 3. Thử nghiệm Đóng vai Nạn nhân lập trình viên
-Trong một cửa sổ Terminal mới, giả vờ gõ sai tên một thư viện `requests` thành mã độc `requests-fake-1.0.0`:
+### 4. Bảng điều khiển (Live Dashboard)
+Mở trình duyệt Web của bạn và truy cập: 👉 **[http://localhost:8000/dashboard](http://localhost:8000/dashboard)**
+> Giao diện điều khiển 3D Cyber Security với hiển thị Phân rã 7 Bước (7-Step Pipeline) và Sơ đồ Đồ thị Tri thức (Knowledge Graph) đã sẵn sàng.
+
+### 5. Cú pháp Kiểm thử (Dành cho Máy khách / Nạn nhân)
+Để yêu cầu hệ thống tải và kiểm duyệt một thư viện (Ví dụ: `shieldaidemo`), hãy mở một cửa sổ Terminal khác và gõ:
 ```powershell
-pip install requests-fake-1.0.0 --index-url http://localhost:8000/simple/
+.\venv\Scripts\pip.exe install --default-timeout=200 --index-url http://localhost:8000/simple/ shieldaidemo
 ```
-**Kết quả mong đợi:** Lệnh `pip install` sẽ bị đá văng với dòng chữ đỏ cực gắt báo lỗi `403 Forbidden`. Trên Web Dashboard, module Blacklist sẽ ngay lập tức hiện lên tên kẻ thù!
+> **Lưu ý Quan Trọng:** Bắt buộc phải thêm cờ `--default-timeout=200` vì quá trình ép mã độc chạy thực tế trong Sandbox và cho AI phân tích sâu mất khoảng 2 phút. Nếu thiếu cờ này, pip sẽ tự động ngắt kết nối và thử lại (Retry) liên tục gây nhiễu vòng lặp.
+
+**Kết quả mong đợi:** 
+Nếu mô hình Gemini/Multi-Agent Agent kết luận gói an toàn, pip sẽ tải thành công. Nếu mã độc bị phát hiện, Terminal của bạn sẽ lập tức văng lỗi chữ đỏ `403 Forbidden` và tên mã độc được đưa vào Blacklist nội bộ chống lây nhiễm!
 
 ---
 *Dự án được xây dựng cho mục đích Nghiên Cứu và Bảo vệ Chuỗi cung ứng Phần mềm.*
