@@ -1,43 +1,38 @@
-# 🛡️ ShieldAI: Zero-Trust PyPI Proxy & Mạng Đồ Thị Tri Thức Mã Độc
+# 🛡️ ShieldAI: Zero-Trust PyPI Proxy & Multi-Agent Malware Defender
 
 **Dự án Nghiên cứu & Phát triển (FPT Research)**
-Đây là bộ mã nguồn hệ thống phòng chống tấn công Chuỗi cung ứng (Supply Chain Attack) dành riêng cho hệ sinh thái Python (PyPI). Hệ thống ứng dụng kiến trúc kết hợp giữa **Dynamic Sandbox, LLM (Mô hình ngôn ngữ lớn), Knowledge Graph (Neo4j)** và cổng chặn mã độc theo thời gian thực (Zero-Trust Proxy).
+ShieldAI là hệ thống phòng thủ Chuỗi cung ứng (Supply Chain Attack) tinh vi dành riêng cho hệ sinh thái Python (PyPI). Thay vì dựa dẫm vào cơ chế quét tĩnh (Static Analysis) mỏng manh, ShieldAI cưỡng chế thi hành mã độc trong **Dynamic Docker Sandbox**, hút cạn Syscalls/Artifacts, và giao cho một **Hội Đồng AI Đa Tác Nhân (Qwen 2.5, Gemma 2, Gemini 2.5)** tranh biện kịch liệt để đưa ra phán quyết tàn nhẫn và chính xác nhất.
 
 ---
 
-## 📖 Tóm tắt Dự án (Abstract)
-Tấn công chuỗi cung ứng thông qua các kỹ thuật như **Typosquatting** (đặt tên thư viện giống hàng thật, vd: `requets` thay vì `requests`) đang ngày càng tinh vi. Các cơ chế phân tích tĩnh (Static Analysis) truyền thống bằng Rule-based (như Semgrep/GuardDog) thường xuyên bị qua mặt bởi các kỹ thuật giấu mã (Obfuscation), Payload mã hóa, hoặc Eval động.
+## 📖 Tính Năng Nổi Bật Đặc Quyền (Core Masterpieces)
 
-**ShieldAI** giải quyết triệt để vấn đề này bằng cách ép thư viện nghi ngờ chạy trong một môi trường **Sandbox** cách ly. Sau đó, nó thu thập toàn bộ "Dấu chân hệ điều hành" (**Syscalls**) và đưa cho Trí tuệ Nhân tạo (**AI Agents**) đọc và gắn nhãn theo khung tiêu chuẩn **MITRE ATT&CK**. Dữ liệu được đẩy vào Đồ thị tri thức (Knowledge Graph) để tính toán điểm rủi ro. Cuối cùng, hệ thống hoạt động như một máy chủ Proxy trung gian, lập tức chặn đứng quá trình `pip install` của nhà phát triển nếu phát hiện mã độc!
+### 1. Kiến trúc Hội Đồng Tranh Biện AI (Multi-Agent Debate Court)
+Hệ thống thoát bỏ việc giao sinh mạng hệ thống cho 1 con AI duy nhất. Nó được tổ chức thành một Tòa án:
+*   **👨‍⚖️ Công Tố Viên (Prosecutor - Qwen 2.5 7B GGUF):** Được tiêm System Prompt tàn nhẫn ("Thà giết lầm hơn bỏ sót"). Quét sạch cặn kẽ file `.log` bắt bẻ từng IP `15.15.15.15` hay từng lệnh `chmod +x /tmp`.
+*   **👨‍💼 Luật Sư Bào Chữa (Defender - Gemma 2 9B GGUF):** Kẻ bới lông tìm vết. Tìm kiếm False Positives và bào chữa (Ví dụ: `openat` vào thư mục tạm có thể là tiến trình cài đặt Pip bình thường). Gemma được trói buộc bởi Native Structured JSON Outputs chống rác Markdown.
+*   **👩‍⚖️ Thẩm Phán Tối Cao (Judge - Gemini 2.5 Flash):** Cầm trịch bộ Luật Tố Tụng (Procedural Rules). Thẩm phán sẽ chặt đầu Công tố viên nếu luận điểm chung chung thiếu Bằng Chứng Thép (Hard Evidence), bảo mật tuyệt đối tính toàn vẹn và độ rủi ro = 0% False Positive.
 
----
+### 2. Sandbox Giam Giữ Tàn Nhẫn (Hardware-Level Docker Detonation)
+*   **File Hệ Thống Lõi:** Dùng `strace -f` kết hợp Cờ Drop Caps. Cách ly qua `.dockerenv`, đoạt bằng chứng tạo File Rác (Dropper Pipeline) qua hệ Scanner `docker diff`.  Loại bỏ mọi file rác của base pip build (`pip-req-build`).
+*   **Packet Sniffer:** Sidecar kết nối qua giao thức Out-of-Band để dùng `tcpdump` bắt file `.pcap`, cô lập lưu lượng. 
 
-## 🏗️ Phân Tách Kiến Trúc (The 10-Phase Pipeline)
-Dự án được triển khai toàn diện qua 10 giai đoạn (Phases) đột phá:
+### 3. Native GGUF Inference Engine (llama-cpp-python)
+*   Chạy 100% Nội bộ, VRAM-Optimized trên Card đồ họa GTX/RTX thông qua hệ Gateway Máy Chủ (API Servers mô phỏng OpenAI). 
+*   **Qwen2.5-7B** và **Gemma-2-9B** túc trực song song dạng Hot-Standby. Tách ly chi phí phụ thuộc vào OpenAI.
 
-### Giai đoạn 1 & 2: Ingestion & Dynamic Sandbox
-*   **Mô tả:** Thay vì đọc mã nguồn để tìm mã độc con, hệ thống khởi tạo một môi trường Sandbox "vô trùng" và chạy thử gói `whl/tar`. Toàn bộ hành vi hệ thống (tạo file, trộm `/etc/passwd`, mở Port) bị Kernel bắt lại thành tệp **`syscalls.log`**.
+### 4. Hệ Sinh Thái Test Bạo Lực (The 7-Payload Benchmark Suite)
+Đã lập trình bộ Toolkit tự động vắt kiệt sức máy quét AI (`create_multi_scenario_malware.py`) qua 7 biến thể:
+1. `telemetry-tracker` (Mã thường, trộm dữ liệu máy)
+2. `crypto-miner-fake` (Mỏ đào Coin)
+3. `doomsday` (Phá hoại Fork-Bomb, xóa tệp)
+4. `requests-typo` (Dropper độc hại kéo file C&C)
+5. `ransom-encrypt` (Ransomware cục bộ)
+6. **[Advanced]** `fileless-mem-exec` (Bom Fileless lây bằng C-Types `mprotect`, bay lượn trên RAM).
+7. **[Advanced]** `obfuscated-phantom` (Mã hóa đa tầng ngâm Zlib Base64 chống tĩnh).
 
-### Giai đoạn 3: AI Threat Extraction & Mapping
-*   **Mô tả:** Một LLM Agent (Google Gemini 2.5 hoặc Qwen2.5 Local) được cấp quyền đọc tệp `syscalls.log`. Với Prompt Engineering chuyên sâu, AI tự động "dịch" các lệnh máy bộ thành những thủ đoạn tấn công con người hiểu được, map thẳng sang chuẩn **MITRE ATT&CK** (Vd: T1083 - File Discovery).
-
-### Giai đoạn 4: Đồ thị Tri thức (Knowledge Graph - Neo4j)
-*   **Mô tả:** Các dữ liệu từ AI được đẩy vào hệ cơ sở dữ liệu đồ thị **Neo4j**. Các mối quan hệ `Package -> Chỉ Dấu -> Hành Vi -> Kỹ Thuật MITRE` được kết nối chằng chịt, tạo ra "Lưới nhện mã độc". Ma trận này phục vụ truy vấn Điểm Rủi Ro (Risk Score) bằng ngôn ngữ Cypher.
-
-### Giai đoạn 5 & 6: Đánh giá & Web Dashboard (Giao diện)
-*   **Mô tả:** Cung cấp đánh giá tỷ lệ False Positive. Đặc biệt, hệ thống đi kèm một trang Web Dashboard nội bộ trực quan (phong cách Glassmorphism tương lai) hiển thị các cảnh báo khẩn cấp và Đồ thị mạng dạng Nút kết nối (Node-Edge Network) bằng **Vis.js**.
-
-### Giai đoạn 7: Cổng trạm Zero-Trust PyPI Proxy
-*   **Mô tả:** Tích hợp trực tiếp chức năng chặn mã độc theo thời gian thực (Real-time). Server FastAPI mở cổng `/simple/` giả lập trang chủ PyPI. Khi user gõ `pip install`, Proxy bắt được request $\rightarrow$ Ném tự động vào Sandbox $\rightarrow$ AI đọc $\rightarrow$ Neo4j báo điểm $\rightarrow$ Trả về **HTTP 403 Forbidden** khóa ngay giao dịch nếu có mã độc.
-
-### Giai đoạn 8: Bộ lưu trữ Tội phạm (Known Malware Blacklist)
-*   **Mô tả:** Khắc phục nhược điểm "Chậm" của AI. Bất kỳ package nào từng bị kết án mã độc sẽ bị "phong ấn" ngay vào danh sách đen `known_malware.json`. Những người tải sau sẽ bị chặn văng ra tức khắc trong `0.01s` mà không cần chạy lại AI, giúp tăng tốc hiệu năng khổng lồ cho Doanh nghiệp.
-
-### Giai đoạn 9: Hội đồng AI Tranh biện (Multi-Agent Debate)
-*   **Mô tả:** Giảm thiểu False Positive xuống 0%. Dùng 3 AI Agent cùng lúc: **Công Tố Viên** (Cố buộc tội) - **Luật Sư** (Cố bảo vệ) - **Thẩm Phán** (Nghe cãi nhau rồi mới kết án). Giúp hệ thống không bao giờ chặn nhầm các thư viện sạch chỉ vì chúng thu thập một chút Telemetry hợp pháp.
-
-### Giai đoạn 10: Dự đoán GNN (Graph Neural Network) - Bản Nâng Cấp Tương Lai
-*   **Mô tả:** Biến các Đồ thị trong Neo4j thành ma trận Tensor. Dùng thuật toán Pytorch **GraphSAGE** huấn luyện cho AI nhận biết "Hình thù" của đồ thị mã độc. Nhờ đó, thay vì phải gọi AI LLM đọc text tốn 20 giây, GNN có thể lướt qua đồ thị mới và đưa ra dự đoán mã độc chỉ trong vỏn vẹn **mili-giây (ms)** mà không cần kết nối tới Internet!
+### 5. Resuscitation Engine (Xoay Vòng và Hồi Sinh API)
+Tích hợp `Tenacity` Exponential Backoff chống crash kết hợp hệ thuật toán xoay vòng `Round-Robin Itertools` (API Keys), ShieldAI đánh bật lỗi HTTP 429 Quota Exhausted của Gemini một cách uyển chuyển.
 
 ---
 
@@ -45,48 +40,31 @@ Dự án được triển khai toàn diện qua 10 giai đoạn (Phases) đột 
 
 ### 1. Yêu cầu Hệ thống (Prerequisites)
 - **Windows / Linux** đã cài đặt Python 3.9+
-- **Docker Engine / Docker Desktop (WSL2)** để chạy hạt nhân cách ly (Sandbox).
+- **Docker Desktop (WSL2)** để chạy Sandbox.
+- Có thư mục `AI_Models/` chứa 2 file GGUF của `Qwen2.5-7B` và `Gemma-2-9b-it`.
 
-### 2. Khởi tạo Không gian Cách ly (Build Sandbox)
-Trước khi chạy hệ thống, bạn bắt buộc phải tạo Image cho Sandbox chứa cấu hình Zero-Trust và các công cụ phân tích mạng (tcpdump, strace):
-```powershell
-# Chạy lệnh này tại thư mục gốc của dự án
-docker build -t shieldai-sandbox:latest -f Dockerfile .
-```
-
-### 3. Cài đặt Thư viện & Bật Proxy Trung tâm
-Hệ thống sử dụng môi trường ảo hóa Python (venv) để tránh xung đột thư viện:
+### 2. Thiết lập Mạng Lưới Nội Bộ (VRAM Tối Ưu)
 ```powershell
 .\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-# Khởi động Backend API (Chạy trạm kiểm soát)
-.\run_server.ps1
+# 1. Khởi động các bộ não LLM Local (Cần RTX/GTX có VRAM >= 12GB)
+# Port 8000: Qwen | Port 8001: Gemma
+.\start_ai_servers.ps1
 ```
-*Trạm gác Proxy và AI Agent sẽ hoạt động và lắng nghe tại cổng: `http://localhost:8000`*
 
-### 4. Bảng điều khiển (Live Dashboard)
-Mở trình duyệt Web của bạn và truy cập: 👉 **[http://localhost:8000/dashboard](http://localhost:8000/dashboard)**
-> Giao diện điều khiển 3D Cyber Security với hiển thị Phân rã 7 Bước (7-Step Pipeline) và Sơ đồ Đồ thị Tri thức (Knowledge Graph) đã sẵn sàng.
-
-### 5. Cú pháp Kiểm thử Cơ bản (Dành cho Máy khách / Nạn nhân)
-Hệ thống đã chuẩn bị sẵn một tập lệnh tạo "Mã độc giả lập vô hại" (Safe Demo Malware). Mã độc này sẽ cố gắng kết nối mạng và đọc `/etc/passwd` trong Sandbox nhưng hoàn toàn không phá hoại máy thật của bạn.
-
-Trước tiên, hãy tạo gói mã độc nội bộ này chèn vào Proxy:
+### 3. Tạo Tự Động Kho Mã Độc (Munitions Depot)
+Sinh ra chuỗi lượng tử 7 gói mã độc tinh vi nhất để test sức bền máy tính:
 ```powershell
-# Mở một cửa sổ Terminal khác và chạy:
-.\venv\Scripts\python.exe create_demo_malware.py
+.\venv\Scripts\python.exe 02_Experiments\Step2_Sandbox_Execution\create_multi_scenario_malware.py
 ```
-*(Gói sẽ được tự động tạo tại `data/demo/shieldaidemo-1.0.0.tar.gz`)*
+*(Các gói sẽ nằm gọn tại `data/quarantine/task_doomsday/`)*
 
-Bây giờ, đóng vai một nạn nhân bị lừa gõ cài đặt gói `shieldaidemo`:
+### 4. Kích Hoạt Auto-Benchmark (Khảo Thí Căng Thẳng)
+Đây là công cụ vắt kiệt công suất AI và Sandbox. Script sẽ thả từng gói mã độc vào lồng kính Docker, hút Syscall, mở tòa án Tòa - Bào - Thẩm phán, và chốt vạch biên bản tự động.
 ```powershell
-.\venv\Scripts\pip.exe install --default-timeout=200 --index-url http://localhost:8000/simple/ shieldaidemo
+.\venv\Scripts\python.exe 02_Experiments\Step2_Sandbox_Execution\benchmark_runner.py
 ```
-> **Lưu ý Quan Trọng:** Bắt buộc phải thêm cờ `--default-timeout=200` vì quá trình ép mã độc chạy thực tế trong Sandbox và cho AI phân tích sâu mất khoảng 2 phút. Nếu thiếu cờ này, pip sẽ tự động ngắt kết nối và thử lại (Retry) liên tục gây nhiễu vòng lặp.
 
-**Kết quả mong đợi:** 
-Nếu mô hình Gemini/Multi-Agent Agent kết luận gói an toàn, pip sẽ tải thành công. Nếu mã độc bị phát hiện, Terminal của bạn sẽ lập tức văng lỗi chữ đỏ `403 Forbidden` và tên mã độc được đưa vào Blacklist nội bộ chống lây nhiễm!
+> **Đầu ra (Output):** Tất cả báo cáo cãi án và tốc độ trễ sẽ được tự động tóm tắt xuất ra thẻ Markdown tuyệt đẹp tại `05_Reporting/benchmark_results.md`.
 
 ---
-*Dự án được xây dựng cho mục đích Nghiên Cứu và Bảo vệ Chuỗi cung ứng Phần mềm.*
+*Dự án được xây dựng cho hệ sinh thái Zero-Trust, nhắm tới môi trường High-Resilience Cybersecurity.*
