@@ -2,6 +2,7 @@ import os
 import json
 import logging
 from pathlib import Path
+from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 
@@ -12,38 +13,39 @@ SYSCALLS_DIR = DATA_DIR / 'syscalls'
 INDICATOR_DIR = DATA_DIR / 'indicators'
 INDICATOR_DIR.mkdir(parents=True, exist_ok=True)
 
+class IndicatorContext(BaseModel):
+    type: str = Field(description="The type of the indicator, usually 'Syscall' or 'Artifact'")
+    api: str = Field(description="The API call or the file path dropping action")
+    source_file: str = Field(description="Usually 'syscalls.log' or 'docker_diff'")
+    package_name: str = Field(description="The name of the package")
+
+class BehaviorDescription(BaseModel):
+    name: str = Field(description="CamelCase description of the behavior (e.g., HiddenFileDrop, ReverseShell)")
+    description: str = Field(description="Short description of the behavior observed")
+
+class MitreTechnique(BaseModel):
+    id: str = Field(description="The MITRE ATT&CK Technique ID (e.g., T1059)")
+    name: str = Field(description="The MITRE Technique Name")
+
+class MitreTactic(BaseModel):
+    id: str = Field(description="The MITRE ATT&CK Tactic ID (e.g., TA0002)")
+    name: str = Field(description="The MITRE Tactic Name")
+
+class ThreatNode(BaseModel):
+    indicator: IndicatorContext
+    behavior: BehaviorDescription
+    technique: MitreTechnique
+    tactic: MitreTactic
+
+class ThreatExtractionResponse(BaseModel):
+    threats: list[ThreatNode]
+
 PROMPT_TEMPLATE = """
 Act as an expert Cyber Threat Intelligence Analyst.
 I will provide you with a JSON-lines log of system calls generated dynamically by a Python package.
 
 Your task is to analyze these syscall logs and extract any malicious intent.
-If no malicious intent is found, return an empty JSON array: []
-
-If malicious behaviors are found, map them to MITRE ATT&CK techniques, and return the output EXACTLY as this JSON array format (no markdown code blocks, just raw JSON).
-
-Format:
-[
-  {
-    "indicator": {
-      "type": "Syscall",
-      "api": "openat or connect or execve",
-      "source_file": "syscalls.log",
-      "package_name": "INSERT_PACKAGE_NAME_HERE"
-    },
-    "behavior": {
-      "name": "CamelCaseBehaviorName",
-      "description": "Short description of the behavior observed"
-    },
-    "technique": {
-      "id": "TXXXX",
-      "name": "Technique Name"
-    },
-    "tactic": {
-      "id": "TAXXXX",
-      "name": "Tactic Name"
-    }
-  }
-]
+If no malicious intent is found, return an empty array for threats.
 
 Here are the syscall logs for the package `{package_name}`:
 {log_content}
@@ -57,25 +59,27 @@ def analyze_logs_with_llm(package_name, log_content):
         return []
         
     client = genai.Client(api_key=api_key)
-    
     prompt = PROMPT_TEMPLATE.replace("{package_name}", package_name).replace("{log_content}", log_content)
     
     logging.info(f"Sending prompt to Gemini for {package_name}...")
     try:
+        # Sử dụng API mới để enforce output theo cấu trúc Pydantic
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ThreatExtractionResponse,
+                temperature=0.1,
+            ),
         )
+        
         text = response.text.strip()
         logging.info(f"Raw Gemini response for {package_name}:\n{text}")
         
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.endswith("```"):
-            text = text[:-3]
-            
-        data = json.loads(text.strip())
-        return data
+        data = json.loads(text)
+        return data.get("threats", [])
+        
     except Exception as e:
         logging.error(f"Failed to process AI response: {e}")
         return []
@@ -90,7 +94,7 @@ def main():
     
     for log_file in SYSCALLS_DIR.glob("*_syscalls.log"):
         package_name = log_file.name.replace("_syscalls.log", "")
-        with open(log_file, "r") as f:
+        with open(log_file, "r", encoding="utf-8") as f:
             log_content = f.read()
             
         logging.info(f"Analyzing {package_name} logs with AI Agent...")

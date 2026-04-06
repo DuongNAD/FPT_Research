@@ -40,17 +40,22 @@ class ThreatExtractionResponse(BaseModel):
     threats: list[ThreatNode]
 
 PROMPT_TEMPLATE = """
-Bạn là Công tố viên phân tích mã độc. Khi bạn tìm thấy các lệnh gọi hệ thống nguy hiểm như openat, execve, connect, bạn TUYỆT ĐỐI KHÔNG ĐƯỢC báo cáo chung chung. BẮT BUỘC bạn phải trích xuất chính xác:
-- TÊN FILE đầy đủ / Đường dẫn tuyệt đối (Ví dụ: /tmp/miner.sh, /etc/shadow, /tmp/payload.elf).
-- Tham số dòng lệnh thực thi (Ví dụ: bash -c ..., chmod +x).
-- Địa chỉ IP/Domain.
-Nếu bạn chỉ báo cáo 'mở file ở /tmp' mà không nêu tên file cụ thể, Thẩm phán sẽ bác bỏ vụ án của bạn. Việc tạo tệp thực thi (.sh, .elf, .exe) tại thư mục tạm là BẰNG CHỨNG THÉP của hành vi Dropper/Malicious.
+You are an elite Cyber Security Prosecutor. Your objective is to scrutinize syscall logs and docker artifacts to extract concrete Indicators of Compromise (IoCs).
+
+CRITICAL INSTRUCTIONS - AVOID NOISE:
+1. IGNORE PIP ARTIFACTS: You MUST completely IGNORE any file operations (openat, read, write) happening inside '/tmp/pip-req-build-*' or '/tmp/pip-install-*' or '.egg-info'. These are standard Python build environments and are strictly BENIGN.
+2. LOOK FOR ACTUAL MALWARE: Do not stop reading early. Scan deep into the logs to find:
+   - Executable drops: Files explicitly ending in '.sh', '.elf', '.py', or dropping into hidden directories (e.g., ~/.config, /root) or system paths (/etc).
+   - Suspicious execution: Look closely for 'execve' calls containing commands like 'curl', 'wget', 'chmod +x', 'base64', 'nc', or shell execution ('/bin/sh -c').
+   - Network activity: Extract explicit IP addresses (e.g., 15.15.15.15) or suspicious domains from 'connect' syscalls.
+3. NO GENERIC REPORTS: Extract the EXACT full file path or IP. Reporting a benign temporary build folder will result in losing the case.
+4. MITRE MAPPING: You must assign a relevant MITRE Tactic and Technique.
 
 Look at the syscall logs (and docker artifacts at the top) of package '{package_name}' and extract the threats.
 Logs:
 {log_content}
 
-CRITICAL INSTRUCTION: You must return ONLY a raw JSON object matching the exact schema below. DO NOT use markdown ```json. Do not include any conversational text.
+You must return ONLY a raw JSON object matching the exact schema below. DO NOT use markdown ```json. Do not include any conversational text.
 {
   "threats": [
     {
@@ -78,7 +83,7 @@ CRITICAL INSTRUCTION: You must return ONLY a raw JSON object matching the exact 
 """
 
 def extract_threats_qwen(package_name, log_content):
-    """Gọi Local Model (Qwen2.5-14B) để thực hiện Threat Extraction Prosecutor."""
+    """Gọi Local Model (Qwen2.5-7B) để thực hiện Threat Extraction Prosecutor."""
     client = OpenAI(base_url=LOCAL_API_BASE, api_key=LOCAL_API_KEY)
     prompt = PROMPT_TEMPLATE.replace("{package_name}", package_name).replace("{log_content}", log_content)
     
@@ -94,7 +99,19 @@ def extract_threats_qwen(package_name, log_content):
             temperature=0.1
         )
         
-        raw_text = response.choices[0].message.content
+        raw_text = response.choices[0].message.content.strip()
+        
+        # Logic làm sạch chuỗi JSON phòng trường hợp model vẫn trả về markdown
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        elif raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+            
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+            
+        raw_text = raw_text.strip()
+        
         print(f"\n--- [DEBUG] RAW OUTPUT TỪ QWEN (Package: {package_name}) ---")
         print(raw_text)
         print("--------------------------------------------------------------\n")

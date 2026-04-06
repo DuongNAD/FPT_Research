@@ -25,9 +25,16 @@ Now, look at the logs:
 {log_content}
 
 Your goal is to find False Positives. Argue why these exact syscalls or artifacts might be perfectly benign Python operations.
-HOWEVER: If the evidence is overwhelmingly malicious (e.g., fetching payloads over network and dropping them in /etc/ or /root/), and there is NO legitimate use-case, YOU MUST CONCEDE and agree with the Prosecutor. Do not hallucinate excuses for obvious malware.
+HOWEVER: If the Prosecutor has provided HARD EVIDENCE (e.g., specific explicit IP addresses, dropping of executable files like '.sh', '.elf', '.exe' in temporary folders), and there is NO legitimate use-case, YOU MUST CONCEDE and agree with the Prosecutor. Set is_safe to false. Do not hallucinate excuses for obvious malware.
 
-CRITICAL INSTRUCTION: You must return ONLY a raw JSON object matching the requested schema. DO NOT USE MARKDOWN ```json. DO NOT INCLUDE ANY CONVERSATIONAL TEXT.
+CRITICAL INSTRUCTION: You must return ONLY a raw JSON object matching the exact schema below. DO NOT USE MARKDOWN ```json. DO NOT INCLUDE ANY CONVERSATIONAL TEXT.
+{
+  "is_safe": true,
+  "reasoning": "The detailed defense logic, introducing reasonable doubt or conceding due to overwhelming malicious evidence.",
+  "benign_alternatives": [
+    "List of benign reasons these syscalls might happen"
+  ]
+}
 """
 
 def extract_defense_gemma(package_name, log_content, prosecutor_case):
@@ -48,7 +55,23 @@ def extract_defense_gemma(package_name, log_content, prosecutor_case):
             temperature=0.1
         )
         
-        raw_text = response.choices[0].message.content
+        raw_text = response.choices[0].message.content.strip()
+        
+        # Xử lý ngoại lệ trường hợp LLM vẫn trả về markdown block
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        elif raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+            
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+            
+        raw_text = raw_text.strip()
+        
+        print(f"\n--- [DEBUG] RAW OUTPUT TỪ GEMMA (Defender cho {package_name}) ---")
+        print(raw_text)
+        print("-------------------------------------------------------------------\n")
+        
         return json.loads(raw_text)
         
     except Exception as e:
