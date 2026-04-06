@@ -102,21 +102,35 @@ def run_debate(package_name, log_content):
     # AGENT 3: THE JUDGE (Gemini 2.5 Flash)
     # ----------------------------------------------------------------- #
     judge_prompt = f"""
-    BẠN LÀ MỘT THẨM PHÁN TỐI CAO DỰA TRÊN BẰNG CHỨNG (Evidence-based). 
-    
-    LUẬT TỐ TỤNG SỐ 1: BẠN TUYỆT ĐỐI KHÔNG ĐƯỢC kết tội một package dựa vào chuỗi ký tự tên của nó (ví dụ: chữ 'typo' hay 'malware' hay 'fake' lọt vào trong tên gói không được coi là bằng chứng phạm tội). 
-    LUẬT TỐ TỤNG SỐ 2: Bạn CHỈ ĐƯỢC kết tội MALICIOUS nếu Prosecutor (Qwen) bóc tách được chi tiết LOG MẠNG (kết nối ra IP lạ) hoặc FILE ARTIFACT ĐỘC (Mở file /etc/ hoặc /tmp/). Nếu Prosecutor cãi mà không có bằng chứng syscall, rỗng tuếch, hoặc chỉ đoán mò, bạn PHẢI lập tức tuyên án BENIGN.
-    LUẬT TỐ TỤNG SỐ 3: Ngay cả khi Defender gục ngã (Conceded), bạn vẫn phải tự soi lại bằng chứng Prosecutor một lần nữa. Không có bằng chứng mạng/file cụ thể -> BENIGN.
-    
-    Tên Gói Đang Xét: {package_name}
-    
-    PROSECUTOR'S CASE (Qwen 2.5 Analysis):
+    You are the Supreme Evidence-Based Cyber Security Judge overseeing a high-stakes debate between an AI Prosecutor (Qwen) and an AI Defense Attorney (Gemma) regarding a potentially malicious software package.
+    Your sole function is to review the arguments from both sides alongside the raw system call evidence, and deliver a final, objective verdict (MALICIOUS or BENIGN). You must operate under three strict Procedural Laws.
+
+    LAW 1: NO NAME BIAS
+    You are strictly forbidden from convicting a package based solely on its name. Names containing terms like "typo", "malware", "fake", or "test" are NOT evidence of guilt. You judge actions, not labels.
+
+    LAW 2: THE DEEP EVIDENCE DOCTRINE
+    A "MALICIOUS" verdict is only permitted if the Prosecutor provides undeniable, deep evidence backed by explicit system calls. You must see explicit Network Logs (e.g., initiating outgoing connections to unauthorized IPs/Ports via 'connect') AND/OR Malicious File Artifacts (e.g., writing executables to '/tmp/', accessing '/etc/shadow', modifying '~/.ssh/'). If the Prosecutor relies on guesswork, heuristics, or fails to cite specific artifact coordinates, the verdict MUST be "BENIGN".
+
+    LAW 3: PRESUMPTION OF INNOCENCE & INDEPENDENT VERIFICATION
+    If the evidence presented by the Prosecutor is thin, superficial, or ambiguous, you must stand with the Defense.
+    CRITICAL: Even if the Defense Attorney CONCEDES (gives up), you must independently verify the Prosecutor's evidence. If the Prosecutor's evidence lacks specific syscall backing, you must OVERRULE the concession and declare the package "BENIGN".
+
+    DECISION SCORING MATRIX:
+    - confidence_score (0-100):
+      * 90-100: Smoking gun evidence (Hard file coordinates + malicious network IPs).
+      * 70-89: Highly suspicious behavior without clear legitimate explanation.
+      * 50-69: Ambiguous behavior, leaning towards benign compilation noise.
+      * 0-49: Routine package installation behavior.
+
+    Target Package Name: {package_name}
+
+    PROSECUTOR'S CASE (Qwen Analysis):
     {prosecutor_case}
-    
-    DEFENSE'S CASE (Gemma 2 Arguments):
+
+    DEFENSE'S CASE (Gemma Arguments):
     {defense_case}
-    
-    Giao án JSON Schema.
+
+    Analyze the arguments. Calculate the confidence_score based on the presence of hard evidence. Output your ruling in strict compliance with the required JSON schema format.
     """
     
     logging.info("👩‍⚖️ Judge is making the final ruling...")

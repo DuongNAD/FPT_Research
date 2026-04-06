@@ -17,17 +17,30 @@ class DefenseArgument(BaseModel):
     reasoning: str = Field(description="The detailed defense logic, introducing reasonable doubt or conceding due to overwhelming malicious evidence.")
     benign_alternatives: list[str] = Field(description="List of benign reasons these syscalls might happen (e.g., 'Normal ping', 'Checking system info'). Empty if conceding.")
 
-PROMPT_TEMPLATE = """
-Act as a Defense Attorney and Blue Team Analyst. Read the Prosecutor's Case below regarding package '{package_name}':
-PROSECUTOR'S CASE: {prosecutor_case}
+PROMPT_TEMPLATE = """<start_of_turn>user
+You are a highly skilled Cyber Security Defender and Blue Team Analyst acting as a Defense Attorney. Your core directive is to critically examine the Prosecutor's Case against a Python package and find legitimate, benign explanations (False Positives) for the observed system behaviors.
 
-Now, look at the logs:
+CONTEXT:
+Package Name: {package_name}
+
+PROSECUTOR'S CASE (The Accusation):
+{prosecutor_case}
+
+RAW SYSCALL EVIDENCE (Partial Logs):
 {log_content}
 
-Your goal is to find False Positives. Argue why these exact syscalls or artifacts might be perfectly benign Python operations.
-HOWEVER: If the Prosecutor has provided HARD EVIDENCE (e.g., specific explicit IP addresses, dropping of executable files like '.sh', '.elf', '.exe' in temporary folders), and there is NO legitimate use-case, YOU MUST CONCEDE and agree with the Prosecutor. Set is_safe to false. Do not hallucinate excuses for obvious malware.
+THE CONCESSION PROTOCOL (CRITICAL RULE):
+While your job is to defend the package, you must not hallucinate excuses for obvious malware. You MUST evaluate the Prosecutor's Case for "HARD EVIDENCE".
+Hard Evidence is strictly defined as:
+1. The creation, chmod (+x), or execution (execve) of shell scripts (.sh), native binaries (.exe,.elf), or hidden executables within temporary directories (/tmp).
+2. Direct network connections (connect) to untrusted IP addresses, mining pools, or known C2 ports (e.g., establishing a reverse shell).
+3. Accessing highly sensitive system credentials (e.g., reading /etc/shadow or ~/.aws/credentials).
 
-CRITICAL INSTRUCTION: You must return ONLY a raw JSON object matching the exact schema below. DO NOT USE MARKDOWN ```json. DO NOT INCLUDE ANY CONVERSATIONAL TEXT.
+If the Prosecutor has provided specific, undeniable HARD EVIDENCE, you MUST CONCEDE. To concede means you agree the package is malicious. If you concede, you must output "is_safe": false.
+If there is NO Hard Evidence, and the observed behavior (e.g., openat in /tmp) can be reasonably explained by standard Python build processes (like pip installing dependencies, compiling C-extensions, or building wheels), you must defend the package and output "is_safe": true, providing the benign alternative reasons.
+
+YOUR TASK:
+Provide your final defense argument. You must output strictly a JSON object matching the DefenseArgument schema:
 {
   "is_safe": true,
   "reasoning": "The detailed defense logic, introducing reasonable doubt or conceding due to overwhelming malicious evidence.",
@@ -35,6 +48,8 @@ CRITICAL INSTRUCTION: You must return ONLY a raw JSON object matching the exact 
     "List of benign reasons these syscalls might happen"
   ]
 }
+Return ONLY valid JSON. No markdown wrappers. No chat filler.<end_of_turn>
+<start_of_turn>model
 """
 
 def extract_defense_gemma(package_name, log_content, prosecutor_case):
