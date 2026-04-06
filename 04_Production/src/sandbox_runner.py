@@ -55,8 +55,8 @@ def run_in_sandbox(filename: str) -> str:
             "docker", "run", "-d", "--name", container_name,
             "--network=shield_net",
             "--cpus=1.0",
-            "--memory=1g",
-            "--pids-limit=100",
+            "--memory=512m",
+            "--pids-limit=50",
             "--cap-drop=ALL",
             "--cap-add=SYS_PTRACE",
             "--security-opt=no-new-privileges=true",
@@ -88,10 +88,10 @@ def run_in_sandbox(filename: str) -> str:
         ], check=True, capture_output=True)
         
         # Lệnh chạy bên trong container chính (Chỉ gồm strace)
-        # Tạo venv trên tmp RAM disk để cài đặt không bị vướng lỗi môi trường/đường dẫn
+        # Bắt file dài hơn xíu, timeout thả tới 25s để có thời gian tải Payload mạng.
         detonate_cmd = (
             f"python -m venv /tmp/venv && "
-            f"timeout 120s strace -f -s 256 -e trace=file,network,process "
+            f"timeout 30s strace -f -s 1000 -e trace=execve,connect,socket,openat,clone,ptrace,mprotect "
             f"-o {guest_log_path} /tmp/venv/bin/pip install {guest_package_path} --no-index --find-links /tmp/ ; "
             f"sleep 2 ; "
             f"chmod 777 {guest_log_path} || true"
@@ -100,20 +100,50 @@ def run_in_sandbox(filename: str) -> str:
         try:
             subprocess.run([
                 "docker", "exec", container_name, "/bin/bash", "-c", detonate_cmd
-            ], capture_output=True, timeout=140)
+            ], capture_output=True, timeout=40)
         except subprocess.TimeoutExpired:
-            logger.warning("[Sandbox] Lệnh kích hoạt đã chạy hết 140s giới hạn cứng!")
+            logger.warning("[Sandbox] Lệnh kích hoạt đã chạy tới 40s (Giới hạn cho Test Mạng Chậm)!")
             
         # Chốt file capture trên sidecar
         subprocess.run(["docker", "kill", "--signal=SIGINT", sidecar_name], capture_output=True)
         time.sleep(2)
 
-        # BƯỚC 4: Hút bằng chứng
+        # BƯỚC 4.1: Tìm kiếm File Artifacts được mã độc cấy vào OS (docker diff)
+        logger.info("[Sandbox] Khởi chạy Image Diff Scanner tìm kiếm tệp tin khả nghi (Artifacts)...")
+        diff_res = subprocess.run(["docker", "diff", container_name], capture_output=True, text=True)
+        suspicious_artifacts = []
+        if diff_res.returncode == 0:
+            import re
+            lines = diff_res.stdout.strip().split("\n")
+            # Loại bỏ các file rác hợp lệ sinh ra do môi trường Python và Pip
+            ignore_patterns = [
+                r"^/tmp/venv", r"^/tmp/pip-", r"^/root/\.cache", 
+                r"^/tmp/.*\.tar\.gz$", r"^/tmp/.*\.whl$", r"^/tmp/__pycache__"
+            ]
+            for line in lines:
+                if line.startswith("A ") or line.startswith("C "):
+                    path = line[2:].strip()
+                    if not any(re.match(p, path) for p in ignore_patterns):
+                        suspicious_artifacts.append(line)
+
+        # Ghi các Artifacts vào file một file log trung gian trong container rồi báo cáo cùng strace log
+        artifact_report = "\n=== DETECTED FILE SYSTEM ARTIFACTS ===\n"
+        if suspicious_artifacts:
+             artifact_report += "\n".join(suspicious_artifacts) + "\n============================================\n"
+        else:
+             artifact_report += "No suspicious file drops detected.\n============================================\n"
+
+        # BƯỚC 4.2: Hút bằng chứng
         logger.info("[Sandbox] 4/4: Hút bằng chứng (.log, .pcap) trả về máy Host...")
         with open(host_log_path, "wb") as f:
+             # Ghi strace log xuống trước
             subprocess.run([
                 "docker", "exec", container_name, "cat", guest_log_path
             ], stdout=f, check=False)
+            
+            # Ghi Artifact Report vào cuối file log để Qwen dễ truy xuất
+            f.write(b"\n")
+            f.write(artifact_report.encode("utf-8"))
         
         # Hút file mạng từ vùng Out-of-Band
         with open(host_pcap_path, "wb") as f:

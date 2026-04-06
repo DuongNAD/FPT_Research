@@ -1,11 +1,22 @@
 FROM python:3.10-slim
 
-# Cài đặt strace và tcpdump để theo dõi syscalls và mạng
+# Cài đặt strace, tcpdump, sudo và libfaketime
 RUN apt-get update && \
-    apt-get install -y strace tcpdump sudo && \
+    apt-get install -y strace tcpdump sudo ca-certificates faketime && \
     rm -rf /var/lib/apt/lists/*
 
-# [SECURITY 3] Tạo user non-root để chạy ứng dụng (chống Docker Escape)
+# Đổi tên libfaketime để giấu nhẹm (Anti-Evasion tricks)
+# Ở phiên bản slim này, libfaketime.so.1 thường nằm ở /usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1
+RUN find /usr/lib -name libfaketime.so.1 -exec cp {} /usr/local/lib/libpthread-patch.so \;
+
+# Tiêm chứng chỉ bảo mật của Sinkhole (Mitmproxy/INetSim)
+RUN update-ca-certificates
+
+# Bịt lỗ hổng bỏ qua Root CA mặc định từ certifi của thư viện requests
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+# Tạo user non-root để chạy ứng dụng (chống Docker Escape)
 RUN useradd -m -s /bin/bash sandbox_user && \
     mkdir -p /quarantine && \
     chown -R sandbox_user:sandbox_user /quarantine
@@ -15,5 +26,9 @@ RUN echo "sandbox_user ALL=(ALL) NOPASSWD: /usr/bin/strace, /usr/sbin/tcpdump" >
 
 WORKDIR /sandbox
 
-# Chuyển sang user non-root mặc định
+# Khởi tạo entrypoint script giấu file LD_PRELOAD
+RUN echo '#!/bin/bash\nexport LD_PRELOAD=/usr/local/lib/libpthread-patch.so\neval "$@"\nunset LD_PRELOAD' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
 USER sandbox_user
+ENTRYPOINT ["/entrypoint.sh"]

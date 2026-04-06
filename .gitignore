@@ -4,3 +4,9 @@ __pycache__/
 .env
 quarantine/
 .DS_Store
+
+AI_Models/
+*.log
+*.txt
+04_Production/quarantine/
+data/quarantine/

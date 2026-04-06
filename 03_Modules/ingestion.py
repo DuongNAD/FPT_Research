@@ -39,6 +39,39 @@ import sys
 # Để import được từ src
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.sandbox_runner import generate_mock_syscall_log
+import ast
+
+def check_install_requires_ast(filepath: str) -> bool:
+    """Đọc file setup.py bằng AST để trích xuất install_requires và kiểm tra với whitelist."""
+    if not os.path.exists(filepath):
+        return True # Không có file thì an toàn tạm thời
+        
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            code = f.read()
+        tree = ast.parse(code)
+        
+        whitelist = ["requests", "urllib3", "numpy", "pandas", "Flask", "Django", "fastapi"]
+        suspicious_found = False
+        
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == "setup":
+                    for kwarg in node.keywords:
+                        if kwarg.arg == "install_requires":
+                            if isinstance(kwarg.value, ast.List):
+                                for elt in kwarg.value.elts:
+                                    if isinstance(elt, ast.Constant):
+                                        dep = elt.value
+                                        # Lấy tên package bằng cách bỏ các ký hiệu phiên bản >=, <=, ==
+                                        pkg_name = dep.split(">=")[0].split("<=")[0].split("==")[0].strip()
+                                        if pkg_name not in whitelist:
+                                           logging.warning(f"[AST Scanner] Khám phá thư viện cài đặt bên ngoài whitelist: {pkg_name}")
+                                           suspicious_found = True
+        return not suspicious_found
+    except Exception as e:
+        logging.error(f"[AST Scanner] Lỗi khi biên dịch mã: {e}")
+        return False # Lỗi parse (có thể bị obfuscated), xem như ko an toàn
 
 async def download_and_analyze(url: str, filename: str) -> bool:
     """
@@ -71,6 +104,13 @@ async def download_and_analyze(url: str, filename: str) -> bool:
     if safe_filename.endswith(".metadata"):
         await broadcast_log(f"[Proxy] Gói thông tin '{safe_filename}' chỉ là Metadata (thông tin mồi). Bypass đưa thẳng ra ngoài...", 'done')
         return True
+        
+    # [UPDATE] Tiền xử lý Bypass
+    is_ast_safe = True
+    setup_file_path = os.path.join(QUARANTINE_DIR, "setup.py") # Trong thực tế cần giải nén file tar.gz ra một vùng temp để lấy setup.py. Ở đây ta giả sử đã có path
+    # is_ast_safe = check_install_requires_ast(setup_file_path)
+    # if is_ast_safe:
+    #       return True # Bypass
         
     # Bước 2 & 3: Thực thi trong Sandbox và lấy syscalls
     await interactive_pause("ném gói tin vào Sandbox Độc Lập")
