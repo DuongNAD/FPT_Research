@@ -1,0 +1,17 @@
+{
+    "Accuracy_%": {
+        "means": 100.0
+    },
+    "Precision_%": {
+        "means": 100.0
+    },
+    "Recall_Detection_Rate_%": {
+        "means": 100.0
+    },
+    "F1_Score_%": {
+        "means": 100.0
+    },
+    "False_Positive_Rate_%": {
+        "means": 0.0
+    }
+}

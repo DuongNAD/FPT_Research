@@ -1,0 +1,50 @@
+[
+    {
+        "Name": "persona_roleplay_prompt_optimization",
+        "Title": "Optimizing Persona-Driven Role-Playing Prompts Across the Pipeline",
+        "Experiment": "Conduct an A/B testing experiment between a 'Baseline Prompt' and a 'Deep Persona Role-Playing Prompt' for all LLM calls (especially Step 6). Structure highly specific roles for the agents (e.g., 'Expert Malware Reverse Engineer', 'Determined Defense Attorney', 'Information Security Judge'). Directly compare the output quality, Accuracy, and the multi-agent ensemble's convergence speed between these two prompt variations.",
+        "expected_outcome": "Highlight the significant Accuracy gap between persona-driven prompts and standard chatbot prompts. Establish a repository of Best-in-Class prompts, eliminate redundant debate cycles, and dramatically increase the Detection Rate for evasive malware."
+    },
+    {
+        "Name": "json_parsing_efficiency",
+        "Title": "Evaluating JSON Extraction Efficiency via Structured Outputs",
+        "Experiment": "Instead of forcing the LLM to output plain text and using Regex to extract JSON codes from the syscalls.log (in src/llm_analyzer.py), implement Pydantic Structured Outputs (or Function Calling) to strictly enforce the data types returned from the LLM API.",
+        "expected_outcome": "Reduce LLM Parse Error rates to 0%, accelerate the Time-to-First-Token, and significantly decrease overall pipeline Latency."
+    },
+    {
+        "Name": "heuristic_filter_before_llm",
+        "Title": "Analyzing Rule-Based (Heuristic) Filters Prior to LLM Debate",
+        "Experiment": "Develop a module to count sensitive system calls (e.g., connect, execve, openat) from syscalls.log before forwarding the context to the LLM. If the alert count is < 2, automatically label the package as Benign without triggering the costly LLM Debate phase.",
+        "expected_outcome": "Drastically reduce API Token costs for clean packages (True Negatives). The False Positive Rate will drop sharply by avoiding LLM hallucinations, though there is a calculated risk of a slight decrease in the overall Detection Rate."
+    },
+    {
+        "Name": "neo4j_graph_representation",
+        "Title": "Transforming Syscalls into Neo4j Graph Representations for LLM Token Optimization",
+        "Experiment": "Immediately after Step 2 (Sandbox syscall extraction), implement a module to parse syscalls into a Graph format (Nodes: Process, File, IP; Edges: CONNECT, READ, WRITE) and ingest them into Neo4j. Instead of forcing the LLM to read lengthy raw logs, provide a condensed JSON graph structure or allow the LLM to autonomously execute Cypher queries (Graph RAG) to verify behaviors.",
+        "expected_outcome": "Save 70-90% of Input Tokens by eliminating redundant text. Greatly improve the Detection Rate, as malicious Kill Chains (e.g., Process -> Open File -> Connect IP) become highly prominent within the Neo4j graph structure."
+    },
+    {
+        "Name": "dynamic_agent_scaling",
+        "Title": "Dynamic Agent Scaling (Ensemble) for Cost Optimization",
+        "Experiment": "Restructure Step 6 (Debate Council in src/multi_agent_extraction.py). Instead of maintaining a fixed 3-Agent ensemble for all packages, introduce a 'Risk Classification' mechanism. Clean packages only require 1 Agent for a rapid verdict. Complex or ambiguous packages trigger the full 3 to 5-Agent Council for deep debate. Measure the system to find the optimal Sweet Spot between Accuracy and Token Cost.",
+        "expected_outcome": "Maximize Token efficiency. Save 60-70% of the API budget on clear-cut cases while maintaining perfect Accuracy for borderline cases involving sophisticated obfuscated malware."
+    },
+    {
+        "Name": "few_shot_in_context_learning",
+        "Title": "Investigating the Impact of Few-Shot In-Context Learning on Syscall Analysis",
+        "Experiment": "Upgrade the analysis prompt in Step 4 (src/llm_analyzer.py) from Zero-Shot to Few-Shot. Inject 2 'Clean Syscall' examples (e.g., Ping check for version updates) and 2 'Malicious Syscall' examples (e.g., Opening a network Backdoor) as Ground Truth directly into the System Prompt before analyzing new logs. Measure the subsequent shifts in the Detection Rate.",
+        "expected_outcome": "Prevent the LLM from being confused by unfamiliar OS logic. The Few-Shot reference examples provide a solid baseline, helping the AI generate more confident assessments and pushing the False Positive Rate down to extremely low levels."
+    },
+    {
+        "Name": "agent_self_reflection_loop",
+        "Title": "Applying a Self-Reflection Loop for the Judge Agent",
+        "Experiment": "At Step 6, after the Judge Agent issues a Draft Verdict, insert an auxiliary loop called 'Self-Refine'. Require the Judge to review its own ruling with critical thinking: 'Am I making overly aggressive assumptions based on legitimate dependency downloads?'. If a misconception is detected, the Judge is authorized to overturn the initial verdict.",
+        "expected_outcome": "Correct cognitive blind spots that the AI Council might fall into during the first round. Trade-off: Latency increases slightly due to an extra API call, but overall Accuracy becomes exceptionally sharp."
+    },
+    {
+        "Name": "local_llm_resource_allocation_and_prompting",
+        "Title": "Investigating Local LLM Model Routing & Multi-Agent Optimization under VRAM Constraints",
+        "Experiment": "Overhaul the entire architecture to run optimally using Local LLMs instead of APIs. specifically: At Step 4 (Log filtering), test a lightweight Model (8B-14B). At Step 6 (Debate), spawn multiple Agents with Concurrency, assigning distinct role-playing System Prompts across more complex Models (30B-70B). Determine if robust Zero-Shot/Few-Shot prompt engineering can completely replace Fine-Tuning. Draft an 'Optimal Hardware Configuration Matrix' aligned with VRAM constraints (e.g., 4GB, 8GB, 12GB, 16GB, 24GB).",
+        "expected_outcome": "Produce an 'LLM Routing Matrix'. Enhance hardware efficiency by proving that Log Filtering only requires ultra-fast 8B Models, reserving heavy 70B Models exclusively for the Judge. Clarify the ambiguity of running multiple Agents on a single Model and solve the Zero-Setup Deployment challenge."
+    }
+]
