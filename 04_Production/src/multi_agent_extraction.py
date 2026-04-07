@@ -22,28 +22,43 @@ def call_local_judge(judge_prompt, port=8002):
     url = f"http://localhost:{port}/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
     
-    # We enforce JSON mode parsing if supported by llama_cpp
-    payload = {
-        "messages": [
-            {"role": "system", "content": "You are a Cyber Security Judge matching output to JSON."},
-            {"role": "user", "content": judge_prompt}
-        ],
-        "temperature": 0.0,
-        "max_tokens": 1500,
-        "response_format": {
-            "type": "json_object",
-            "schema": FinalVerdict.model_json_schema()
-        }
-    }
+    messages = [
+        {"role": "system", "content": "You are a Cyber Security Judge matching output to JSON."},
+        {"role": "user", "content": judge_prompt}
+    ]
     
-    try:
+    def fetch(msgs):
+        payload = {
+            "messages": msgs,
+            "temperature": 0.01,
+            "repetition_penalty": 1.15,
+            "max_tokens": 2048,
+            "response_format": {
+                "type": "json_object",
+                "schema": FinalVerdict.model_json_schema()
+            }
+        }
         response = requests.post(url, json=payload, headers=headers, timeout=120)
         response.raise_for_status()
-        result = response.json()
-        content = result['choices'][0]['message']['content']
-        # Sanitize unescaped backslashes to prevent JSON parse errors
-        content = content.replace('\\', '\\\\')
-        return json.loads(content, strict=False)
+        return response.json()['choices'][0]['message']['content']
+        
+    try:
+        content = fetch(messages)
+    except Exception as e:
+        logging.error(f"Failed to process Local Judge AI response: {e}")
+        raise e
+        
+    try:
+        content_clean = content.replace('\\', '\\\\')
+        return json.loads(content_clean, strict=False)
+    except json.JSONDecodeError:
+        logging.warning("JSON Parsing Error detected (Truncation or Invalid Escape). Engaging Retry Fallback...")
+        messages.append({"role": "assistant", "content": content})
+        messages.append({"role": "user", "content": "Your previous output was invalid JSON or truncated. Please regenerate the JSON perfectly."})
+        
+        content2 = fetch(messages)
+        content_clean2 = content2.replace('\\', '\\\\')
+        return json.loads(content_clean2, strict=False)
     except Exception as e:
         logging.error(f"Failed to process Local Judge AI response: {e}")
         raise e
@@ -131,7 +146,7 @@ def run_judge_stage(package_name, prosecutor_verdict, defense_verdict):
     {defense_case}
 
     Analyze the arguments. Calculate the confidence_score based on the presence of hard evidence. Output your ruling in strict compliance with the required JSON schema format.
-    IMPORTANT: The 'reason' field MUST be written entirely in formal Vietnamese, keeping technical terms in English. If the verdict is 'BENIGN', the 'mitre_techniques' list must be empty [].
+    IMPORTANT: The 'reason' field MUST be written entirely in formal Vietnamese, keeping technical terms in English. Keep the reasoning strictly concise (under 3 sentences) to avoid truncation. If the verdict is 'BENIGN', the 'mitre_techniques' list must be empty [].
     """
     
     logging.info(f"👩‍⚖️ Judge is making the final ruling for: {package_name}...")
