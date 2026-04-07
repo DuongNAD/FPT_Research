@@ -173,7 +173,7 @@ def run_judge_stage(package_name, prosecutor_verdict, defense_verdict, rebuttal_
         if "risk_score" in data:
             try:
                 rsi = int(data["risk_score"])
-                if rsi >= 6:
+                if rsi >= 8:
                     data["final_verdict"] = "MALICIOUS"
             except Exception:
                 pass
