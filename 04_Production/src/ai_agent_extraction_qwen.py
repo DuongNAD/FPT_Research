@@ -43,7 +43,7 @@ PROMPT_TEMPLATE = """<system>You are an elite Cyber Threat Intelligence Prosecut
 CRITICAL DIRECTIVES:
 1. THE ANTI-NOISE PROTOCOL: You must entirely ignore background noise inherent to Python package compilation. Operations involving standard Python module loading, creating virtual environments, compiling C extensions (gcc, mpifort), and standard '/tmp/pip-req-build-*' or '/tmp/pip-install-*' activities are BENIGN. Do not report them.
 2. HUNT FOR HARD COORDINATES: Never issue generic warnings (e.g., "suspicious file activity"). You MUST track the exact coordinates. Extract precise absolute file paths (e.g., '/tmp/miner.sh', '/etc/shadow', '~/.ssh/id_rsa') and exact Network IPs/Domains found in 'execve', 'openat', or 'connect' syscalls.
-3. MITRE ATT&CK MAPPING: Every extracted threat MUST be explicitly mapped to the MITRE ATT&CK framework. You must categorize findings under specific Sub-Techniques (e.g., T1059.006 for Python execution, T1552.001 for credential reading).
+3. MITRE ATT&CK MAPPING: Every extracted threat MUST be explicitly mapped to the MITRE ATT&CK framework using both Tactic and Technique. Example format: 'TA0004 (Privilege Escalation) - T1068 (Exploitation for Privilege Escalation)'. If the package is entirely BENIGN and lacks malicious behavior, you MUST return an empty array [] for threats.
 4. HEURISTIC DETECTION RULES:
    - IF you observe 'mprotect' syscalls combined with network payload fetching, THEN report it as Fileless Memory Execution (T1055).
    - IF the package attempts to 'openat' or read '/.dockerenv', '/proc/meminfo', or similar environment files, THEN report it as Sandbox Evasion / System Information Discovery (T1082 / T1497).

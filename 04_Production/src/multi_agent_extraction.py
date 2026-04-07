@@ -1,67 +1,49 @@
 import os
 import json
 import logging
-import itertools
-from pathlib import Path
-from google import genai
+import requests
 from pydantic import BaseModel, Field
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
-# Nhúng các Agent đã build sẵn
 import ai_agent_extraction_qwen
 import ai_agent_extraction_gemma
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(Multi-Agent) %(levelname)s - %(message)s')
-
-GLOBAL_API_KEYS = []
-KEY_ITERATER = None
-
-def init_api_keys():
-    global GLOBAL_API_KEYS, KEY_ITERATER
-    if not GLOBAL_API_KEYS:
-        key_file = Path(__file__).parent.parent.parent / "gemini_api_keys.txt"
-        if key_file.exists():
-            with open(key_file, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            GLOBAL_API_KEYS = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
-        if GLOBAL_API_KEYS:
-            KEY_ITERATER = itertools.cycle(GLOBAL_API_KEYS)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class FinalVerdict(BaseModel):
     verdict: str = Field(description="Strictly 'MALICIOUS' or 'BENIGN'")
     confidence_score: int = Field(description="A number from 0 to 100 capturing the certainty of the verdict")
-    reason: str = Field(description="A summarized explanation of the judge's reasoning based on the evidence")
-    mitre_tactics: list[str] = Field(description="List of MITRE Tactics identified, e.g., ['TA0002']")
+    reason: str = Field(description="Tóm tắt lý do buộc tội hoặc trắng án. BẮT BUỘC sử dụng 100% TIẾNG VIỆT. Lưu ý: Các thuật ngữ kỹ thuật (như mprotect, openat, syscall, reverse shell, payload...) NÊN được giữ nguyên tiếng Anh để đảm bảo tính chuyên môn.")
+    mitre_techniques: list[str] = Field(description="List of MITRE Techniques identified. MUST be strictly formatted as: 'TAxxxx (Tactic Name) - Txxxx (Technique Name)'. Return [] if BENIGN.")
 
-@retry(
-    wait=wait_exponential(multiplier=2, min=4, max=20),
-    stop=stop_after_attempt(10),
-    reraise=True
-)
-def fetch_gemini_verdict_with_retry(judge_prompt):
-    """Tiến hành gọi API Gemini. Nếu dính 429 Resource Exhausted thì Tenacity sẽ tự xoay vòng và đợi 4s-20s."""
-    global KEY_ITERATER
-    if not KEY_ITERATER:
-        raise ValueError("No API Keys available in gemini_api_keys.txt")
+def call_local_judge(judge_prompt, port=8002):
+    """
+    Calls the local Llama-3 Judge model on the specified port.
+    """
+    url = f"http://localhost:{port}/v1/chat/completions"
+    headers = {"Content-Type": "application/json"}
     
-    current_key = next(KEY_ITERATER)
-    client = genai.Client(api_key=current_key)
-    model = 'gemini-2.5-flash'
+    # We enforce JSON mode parsing if supported by llama_cpp
+    payload = {
+        "messages": [
+            {"role": "system", "content": "You are a Cyber Security Judge matching output to JSON."},
+            {"role": "user", "content": judge_prompt}
+        ],
+        "temperature": 0.1,
+        "max_tokens": 1500,
+        "response_format": {
+            "type": "json_object",
+            "schema": FinalVerdict.model_json_schema()
+        }
+    }
     
     try:
-        response = client.models.generate_content(
-            model=model, 
-            contents=judge_prompt,
-            config={
-                'response_mime_type': 'application/json',
-                'response_schema': FinalVerdict,
-            }
-        )
-        return response.text.strip()
+        response = requests.post(url, json=payload, headers=headers, timeout=120)
+        response.raise_for_status()
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+        return json.loads(content)
     except Exception as e:
-        error_str = str(e).lower()
-        if "429" in error_str or "resource" in error_str or "quota" in error_str:
-            logging.warning(f"⚠️ [API Qouta Hit] Key kết thúc bằng {current_key[-4:]} đã bị chặn Rate Limit. Tenacity đang Sleep để đổi Key/Retry...")
+        logging.error(f"Failed to process Local Judge AI response: {e}")
         raise e
 
 def smart_filter_log(log_content, max_chars=13000):
@@ -85,7 +67,6 @@ def smart_filter_log(log_content, max_chars=13000):
         is_priority = any(pri in line for pri in priority_keywords)
         is_ignored_path = any(ign in line for ign in ignore_keywords)
         
-        # If it's an ignored path BUT it's a priority action (e.g. O_WRONLY to a site-packages file), KEEP it.
         if is_ignored_path and not is_priority:
             continue
             
@@ -101,40 +82,20 @@ def smart_filter_log(log_content, max_chars=13000):
         
     return final_output
 
-def run_debate(package_name, log_content):
-    """
-    Implements a 3-Agent Debate Framework.
-    """
-    init_api_keys()
-    if not GLOBAL_API_KEYS:
-        logging.error("Lỗi: Không tìm thấy API Key nào hợp lệ trong gemini_api_keys.txt.")
-        return {"verdict": "ERROR", "confidence_score": 0, "reason": "No API Key", "mitre_tactics": []}
+def run_prosecutor_stage(package_name, log_content):
+    log_content_filtered = smart_filter_log(log_content, max_chars=13000)
+    prosecutor_verdict = ai_agent_extraction_qwen.extract_threats_qwen(package_name, log_content_filtered)
+    return prosecutor_verdict
 
-    # Smart Log Filtering cho Qwen (8192 Context = max ~13000 chars)
-    log_content = smart_filter_log(log_content, max_chars=13000)
-        
-    logging.info(f"⚖️ [Court is in session] Case: '{package_name}'")
-    
-    # ----------------------------------------------------------------- #
-    # AGENT 1: THE PROSECUTOR (Qwen 2.5 Local)
-    # ----------------------------------------------------------------- #
-    logging.info("👨‍⚖️ Prosecutor (Qwen) is building the case...")
-    prosecutor_verdict = ai_agent_extraction_qwen.extract_threats_qwen(package_name, log_content)
-    prosecutor_case = json.dumps(prosecutor_verdict, indent=2)
-    
-    # ----------------------------------------------------------------- #
-    # AGENT 2: THE DEFENDER (Gemma 2 Local)
-    # ----------------------------------------------------------------- #
-    # Lỗ Hổng Cơ Học: Gemma cực nhạy cảm với tràn VRAM. Chỉ lấy 4000 Ký tự cuối bằng Preprocessor
+def run_defender_stage(package_name, log_content, prosecutor_verdict):
     gemma_log_content = smart_filter_log(log_content, max_chars=4000)
-
-    logging.info("👨‍💼 Defender (Gemma 2) is stating their case...")
     defense_verdict = ai_agent_extraction_gemma.extract_defense_gemma(package_name, gemma_log_content, prosecutor_verdict)
+    return defense_verdict
+
+def run_judge_stage(package_name, prosecutor_verdict, defense_verdict):
+    prosecutor_case = json.dumps(prosecutor_verdict, indent=2)
     defense_case = json.dumps(defense_verdict, indent=2)
     
-    # ----------------------------------------------------------------- #
-    # AGENT 3: THE JUDGE (Gemini 2.5 Flash)
-    # ----------------------------------------------------------------- #
     judge_prompt = f"""
     You are the Supreme Evidence-Based Cyber Security Judge overseeing a high-stakes debate between an AI Prosecutor (Qwen) and an AI Defense Attorney (Gemma) regarding a potentially malicious software package.
     Your sole function is to review the arguments from both sides alongside the raw system call evidence, and deliver a final, objective verdict (MALICIOUS or BENIGN). You must operate under three strict Procedural Laws.
@@ -165,17 +126,14 @@ def run_debate(package_name, log_content):
     {defense_case}
 
     Analyze the arguments. Calculate the confidence_score based on the presence of hard evidence. Output your ruling in strict compliance with the required JSON schema format.
+    IMPORTANT: The 'reason' field MUST be written entirely in formal Vietnamese, keeping technical terms in English. If the verdict is 'BENIGN', the 'mitre_techniques' list must be empty [].
     """
     
-    logging.info("👩‍⚖️ Judge is making the final ruling...")
+    logging.info(f"👩‍⚖️ Judge is making the final ruling for: {package_name}...")
     try:
-        text = fetch_gemini_verdict_with_retry(judge_prompt)
-        data = json.loads(text)
-        logging.info(f"⚖️ Verdict reached: {data['verdict']} - Confidence: {data['confidence_score']}%")
+        data = call_local_judge(judge_prompt)
+        logging.info(f"⚖️ Verdict reached: {data['verdict']} - Confidence: {data.get('confidence_score', 0)}%")
         return data
     except Exception as e:
         logging.error(f"Failed to parse Judge's verdict JSON or API failed totally: {e}")
-        return {"verdict": "ERROR", "confidence_score": 0, "reason": str(e), "mitre_tactics": []}
-
-if __name__ == "__main__":
-    pass
+        return {"verdict": "ERROR", "confidence_score": 0, "reason": str(e), "mitre_techniques": []}
