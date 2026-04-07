@@ -84,7 +84,7 @@ def run_in_sandbox(filename: str) -> str:
             "--network", f"container:{container_name}",
             "--cap-drop=ALL",
             "--cap-add=NET_RAW", "--cap-add=NET_ADMIN",
-            DOCKER_IMAGE, "tcpdump", "-i", "any", "-w", guest_pcap_path
+            DOCKER_IMAGE, "tcpdump", "-U", "-i", "any", "-w", guest_pcap_path
         ], check=True, capture_output=True)
         
         # Lệnh chạy bên trong container chính (Chỉ gồm strace)

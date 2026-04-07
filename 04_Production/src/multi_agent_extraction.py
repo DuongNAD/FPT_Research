@@ -64,6 +64,43 @@ def fetch_gemini_verdict_with_retry(judge_prompt):
             logging.warning(f"⚠️ [API Qouta Hit] Key kết thúc bằng {current_key[-4:]} đã bị chặn Rate Limit. Tenacity đang Sleep để đổi Key/Retry...")
         raise e
 
+def smart_filter_log(log_content, max_chars=13000):
+    lines = log_content.split('\n')
+    priority_keywords = ['mprotect', 'connect(', 'execve', 'id_rsa', 'meminfo', '.ssh', 'shadow', 'dockerenv', 'socket', 'clone(', 'O_WRONLY', 'O_CREAT', 'chmod']
+    ignore_keywords = ['/usr/local/lib/python', '/tmp/pip-install', '/tmp/pip-req-build', 'site-packages', '__pycache__', 'CacheControl']
+    
+    filtered_lines = []
+    artifact_section = []
+    in_artifact = False
+    
+    for line in lines:
+        if line.startswith("=== DETECTED FILE SYSTEM ARTIFACTS ==="):
+            in_artifact = True
+        
+        if in_artifact:
+            artifact_section.append(line)
+            continue
+            
+        # Priority checks
+        is_priority = any(pri in line for pri in priority_keywords)
+        is_ignored_path = any(ign in line for ign in ignore_keywords)
+        
+        # If it's an ignored path BUT it's a priority action (e.g. O_WRONLY to a site-packages file), KEEP it.
+        if is_ignored_path and not is_priority:
+            continue
+            
+        filtered_lines.append(line)
+        
+    filtered_content = '\n'.join(filtered_lines)
+    if len(filtered_content) > max_chars:
+        filtered_content = "...[SMART FILTERED]...\n" + filtered_content[-max_chars:]
+        
+    final_output = filtered_content
+    if artifact_section:
+        final_output += "\n" + "\n".join(artifact_section)
+        
+    return final_output
+
 def run_debate(package_name, log_content):
     """
     Implements a 3-Agent Debate Framework.
@@ -73,9 +110,8 @@ def run_debate(package_name, log_content):
         logging.error("Lỗi: Không tìm thấy API Key nào hợp lệ trong gemini_api_keys.txt.")
         return {"verdict": "ERROR", "confidence_score": 0, "reason": "No API Key", "mitre_tactics": []}
 
-    # Cắt gọt tổng quát cho Qwen (8192 Context = max ~13000 chars)
-    if len(log_content) > 13000:
-        log_content = "...[PREFIX TRUNCATED L1]...\n" + log_content[-13000:]
+    # Smart Log Filtering cho Qwen (8192 Context = max ~13000 chars)
+    log_content = smart_filter_log(log_content, max_chars=13000)
         
     logging.info(f"⚖️ [Court is in session] Case: '{package_name}'")
     
@@ -89,10 +125,8 @@ def run_debate(package_name, log_content):
     # ----------------------------------------------------------------- #
     # AGENT 2: THE DEFENDER (Gemma 2 Local)
     # ----------------------------------------------------------------- #
-    # Lỗ Hổng Cơ Học: Gemma cực nhạy cảm với tràn VRAM. Chỉ lấy 4000 Ký tự cuối (Tương đương ~1000 tokens)
-    gemma_log_content = log_content
-    if len(gemma_log_content) > 4000:
-        gemma_log_content = "...[PREFIX TRUNCATED L2 FOR GEMMA]...\n" + gemma_log_content[-4000:]
+    # Lỗ Hổng Cơ Học: Gemma cực nhạy cảm với tràn VRAM. Chỉ lấy 4000 Ký tự cuối bằng Preprocessor
+    gemma_log_content = smart_filter_log(log_content, max_chars=4000)
 
     logging.info("👨‍💼 Defender (Gemma 2) is stating their case...")
     defense_verdict = ai_agent_extraction_gemma.extract_defense_gemma(package_name, gemma_log_content, prosecutor_verdict)
@@ -109,7 +143,7 @@ def run_debate(package_name, log_content):
     You are strictly forbidden from convicting a package based solely on its name. Names containing terms like "typo", "malware", "fake", or "test" are NOT evidence of guilt. You judge actions, not labels.
 
     LAW 2: THE DEEP EVIDENCE DOCTRINE
-    A "MALICIOUS" verdict is only permitted if the Prosecutor provides undeniable, deep evidence backed by explicit system calls. You must see explicit Network Logs (e.g., initiating outgoing connections to unauthorized IPs/Ports via 'connect') AND/OR Malicious File Artifacts (e.g., writing executables to '/tmp/', accessing '/etc/shadow', modifying '~/.ssh/'). If the Prosecutor relies on guesswork, heuristics, or fails to cite specific artifact coordinates, the verdict MUST be "BENIGN".
+    A "MALICIOUS" verdict is permitted if the Prosecutor provides undeniable, deep evidence backed by explicit system calls. You must see explicit Network Logs AND/OR Malicious File Artifacts. EXCEPTION FOR HEURISTICS: If the Prosecutor invokes specific Heuristics (like Fileless Memory Execution from 'mprotect', Sandbox Evasion from reading '/proc/meminfo', or Obfuscation) and supports it with specific syscall evidence, you MUST accept this as valid Deep Evidence and return a "MALICIOUS" verdict.
 
     LAW 3: PRESUMPTION OF INNOCENCE & INDEPENDENT VERIFICATION
     If the evidence presented by the Prosecutor is thin, superficial, or ambiguous, you must stand with the Defense.
