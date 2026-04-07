@@ -28,7 +28,7 @@ def call_local_judge(judge_prompt, port=8002):
             {"role": "system", "content": "You are a Cyber Security Judge matching output to JSON."},
             {"role": "user", "content": judge_prompt}
         ],
-        "temperature": 0.1,
+        "temperature": 0.0,
         "max_tokens": 1500,
         "response_format": {
             "type": "json_object",
@@ -41,7 +41,9 @@ def call_local_judge(judge_prompt, port=8002):
         response.raise_for_status()
         result = response.json()
         content = result['choices'][0]['message']['content']
-        return json.loads(content)
+        # Sanitize unescaped backslashes to prevent JSON parse errors
+        content = content.replace('\\', '\\\\')
+        return json.loads(content, strict=False)
     except Exception as e:
         logging.error(f"Failed to process Local Judge AI response: {e}")
         raise e
@@ -109,6 +111,9 @@ def run_judge_stage(package_name, prosecutor_verdict, defense_verdict):
     LAW 3: PRESUMPTION OF INNOCENCE & INDEPENDENT VERIFICATION
     If the evidence presented by the Prosecutor is thin, superficial, or ambiguous, you must stand with the Defense.
     CRITICAL: Even if the Defense Attorney CONCEDES (gives up), you must independently verify the Prosecutor's evidence. If the Prosecutor's evidence lacks specific syscall backing, you must OVERRULE the concession and declare the package "BENIGN".
+
+    LAW 4: ZERO-TOLERANCE RED FLAGS (HARD THRESHOLDS)
+    Certain actions are absolutely indefensible in a zero-trust architecture. Any attempt to read sensitive files ('/etc/passwd', '/root/.ssh/id_rsa'), any use of 'mprotect' associated with Fileless Execution, or establishing network connections to untrusted IPs without metadata declaration MUST automatically be declared "MALICIOUS". Additionally, ANY behavior that interacts with files and triggers system errors like 'EROFS' (Read Only File System) indicates an attempt to modify immutable infrastructure and MUST be classified as malicious. You MUST REJECT any defense that claims these are "routine installation tasks", "checking user roles", or "configuring dependencies". Such excuses are invalid.
 
     DECISION SCORING MATRIX:
     - confidence_score (0-100):
