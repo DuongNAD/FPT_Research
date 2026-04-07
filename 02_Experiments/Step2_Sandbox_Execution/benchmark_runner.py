@@ -12,6 +12,7 @@ sys.path.append(str(prod_src))
 
 import sandbox_runner
 import multi_agent_extraction
+import kg_transformer
 import local_ai_manager
 
 def main():
@@ -27,8 +28,7 @@ def main():
     report_lines.append("| Tên Gói Hệ Thống | Độ Trễ (Xử Lý) | Phán Quyết Của Tòa | Thuật Toán Khớp MITRE | Tóm Tắt Lý Do Bắt Tội |")
     report_lines.append("|---|---|---|---|---|")
     
-    target_names = ["doomsday-2.0", "dns-exfil-typosquat-1.0.0", "crypto-miner-stealth-1.0", "sandbox-evasion-sleep-1.0.0", "bashrc-persistence-1.0.0"]
-    malware_files = [f for f in malware_dir.glob("*.tar.gz") if any(n in f.name for n in target_names)]
+    malware_files = list(malware_dir.glob("*.tar.gz"))
     if not malware_files:
         print("Không tìm thấy tệp mã độc nào để benchmark.")
         return
@@ -66,7 +66,11 @@ def main():
             
         try:
             with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
-                log_content = f.read()
+                raw_log = f.read()
+            
+            # --- Tích hợp Knowledge Graph ---
+            log_content = kg_transformer.transform_to_kg(raw_log)
+            # --------------------------------
             elapsed_time = time.time() - sandbox_start
         except Exception as e:
             print(f"🚫 LỖI I/O: Không thể đọc log {e}")
@@ -119,10 +123,11 @@ def main():
         # Ghi nhận kết quả liền tay
         total_processing_times.append(elapsed_time)
         elapsed_str = str(round(elapsed_time, 2))
-        v = str(final_verdict.get("verdict", "ERROR")).strip()
-        raw_mitre = final_verdict.get("mitre_techniques", [])
+        
+        v = str(final_verdict.get("final_verdict", "ERROR")).strip()
+        raw_mitre = prosecutor_case.get("mitre_techniques", []) if isinstance(prosecutor_case, dict) else []
         mitre = ", ".join(raw_mitre) if raw_mitre else "-"
-        reason = str(final_verdict.get("reason", "")).replace("\n", " ").replace("|", "I")
+        reason = str(final_verdict.get("analytical_reasoning", "")).replace("\n", " ").replace("|", "I")
         
         label_verdict = f"🟢 {v}" if v.upper() == "BENIGN" else (f"🔴 {v}" if v.upper() == "MALICIOUS" else f"🟡 {v}")
         report_lines.append(f"| `{package_name}` | `{elapsed_str}s` | **{label_verdict}** | `{mitre}` | {reason} |")
