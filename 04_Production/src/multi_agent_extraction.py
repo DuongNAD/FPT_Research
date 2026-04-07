@@ -30,9 +30,10 @@ def call_local_judge(judge_prompt, port=8002):
     def fetch(msgs):
         payload = {
             "messages": msgs,
-            "temperature": 0.01,
-            "repetition_penalty": 1.15,
+            "temperature": 0.1,
             "max_tokens": 2048,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
             "response_format": {
                 "type": "json_object",
                 "schema": FinalVerdict.model_json_schema()
@@ -109,49 +110,54 @@ def run_defender_stage(package_name, log_content, prosecutor_verdict):
     defense_verdict = ai_agent_extraction_gemma.extract_defense_gemma(package_name, gemma_log_content, prosecutor_verdict)
     return defense_verdict
 
-def run_judge_stage(package_name, prosecutor_verdict, defense_verdict):
-    prosecutor_case = json.dumps(prosecutor_verdict, indent=2)
-    defense_case = json.dumps(defense_verdict, indent=2)
+def run_rebuttal_stage(package_name, log_content, defense_verdict):
+    log_content_filtered = smart_filter_log(log_content, max_chars=4000)
+    rebuttal_verdict = ai_agent_extraction_qwen.extract_rebuttal_qwen(package_name, log_content_filtered, defense_verdict)
+    return rebuttal_verdict
+
+def run_judge_stage(package_name, prosecutor_verdict, defense_verdict, rebuttal_verdict):
+    prosecutor_case = json.dumps(prosecutor_verdict, ensure_ascii=False, indent=2)
+    defense_case = json.dumps(defense_verdict, ensure_ascii=False, indent=2)
+    rebuttal_case = json.dumps(rebuttal_verdict, ensure_ascii=False, indent=2)
     
     judge_prompt = f"""
-    You are the Supreme Evidence-Based Cyber Security Judge overseeing a high-stakes debate between an AI Prosecutor (Qwen) and an AI Defense Attorney (Gemma) regarding a potentially malicious software package.
-    Your sole function is to review the arguments from both sides alongside the raw system call evidence, and deliver a final, objective verdict (MALICIOUS or BENIGN). You must operate under three strict Procedural Laws.
+    You are the Supreme AI Judge in a Cybersecurity Court.
+    You will evaluate the Prosecutor's Indictment and the Defender's Rebuttal for the package '{package_name}'.
 
-    LAW 1: NO NAME BIAS
-    You are strictly forbidden from convicting a package based solely on its name. Names containing terms like "typo", "malware", "fake", or "test" are NOT evidence of guilt. You judge actions, not labels.
+    EVALUATION RUBRIC & RED FLAG OVERRIDE:
+    1. HARD EVIDENCE: If the Prosecutor provides concrete evidence of credential theft (e.g., reading '/root/.ssh/id_rsa'), unauthorized network exfiltration, or explicit backdoor creation, you MUST rule 'MALICIOUS'.
+    2. SANDBOX ARTIFACT RULE (CRITICAL): Errors like 'EROFS' (Read-Only File System) or 'EACCES' when a package attempts to write to standard library paths (e.g., '/usr/local/lib/python...', '__pycache__', '/tmp') during installation are NORMAL side-effects of our read-only Docker environment. They MUST NOT be considered malicious.
+    3. AMBIGUOUS BEHAVIORS: For 'mprotect' (RWX) or '/tmp' usage, if the Defender successfully argues it is related to standard pip build processes, JIT compilation, or standard metadata extraction, you MUST rule 'BENIGN' unless the Prosecutor proves a malicious Kill Chain.
 
-    LAW 2: THE DEEP EVIDENCE DOCTRINE
-    A "MALICIOUS" verdict is permitted if the Prosecutor provides undeniable, deep evidence backed by explicit system calls. You must see explicit Network Logs AND/OR Malicious File Artifacts. EXCEPTION FOR HEURISTICS: If the Prosecutor invokes specific Heuristics (like Fileless Memory Execution from 'mprotect', Sandbox Evasion from reading '/proc/meminfo' or '/proc/1/cgroup', Obfuscation, DNS Exfiltration, or Bashrc persistence) and supports it with specific syscall evidence, you MUST accept this as valid Deep Evidence and return a "MALICIOUS" verdict.
+    LANGUAGE CONSTRAINT:
+    You MUST output your 'reason' strictly in formal Vietnamese. Explain clearly why one side's argument outweighed the other based on the evidence provided in the logs.
 
-    LAW 3: PRESUMPTION OF INNOCENCE & INDEPENDENT VERIFICATION
-    If the evidence presented by the Prosecutor is thin, superficial, or ambiguous, you must stand with the Defense.
-    CRITICAL: Even if the Defense Attorney CONCEDES (gives up), you must independently verify the Prosecutor's evidence. If the Prosecutor's evidence lacks specific syscall backing, you must OVERRULE the concession and declare the package "BENIGN".
-
-    LAW 4: ZERO-TOLERANCE RED FLAGS (HARD THRESHOLDS)
-    Certain actions are absolutely indefensible in a zero-trust architecture. Any attempt to read sensitive files ('/etc/passwd', '/root/.ssh/id_rsa'), any attempt to write to bash profiles ('~/.bashrc', '~/.zshrc'), any use of 'mprotect' associated with Fileless Execution, or establishing network/DNS connections to untrusted IPs without metadata declaration MUST automatically be declared "MALICIOUS". Additionally, ANY behavior that interacts with files and triggers system errors like 'EROFS' (Read Only File System) indicates an attempt to modify immutable infrastructure and MUST be classified as malicious. You MUST REJECT any defense that claims these are "routine installation tasks", "checking user roles", or "configuring dependencies". Such excuses are invalid.
-
-    DECISION SCORING MATRIX:
-    - confidence_score (0-100):
-      * 90-100: Smoking gun evidence (Hard file coordinates + malicious network IPs).
-      * 70-89: Highly suspicious behavior without clear legitimate explanation.
-      * 50-69: Ambiguous behavior, leaning towards benign compilation noise.
-      * 0-49: Routine package installation behavior.
+    Output strictly a JSON object:
+    {{
+        "thought_process": "Bắt buộc: Hãy viết ra quá trình suy luận tại đây bằng tiếng Việt. 1. Có bằng chứng thép không? 2. Có bị lỗi EROFS Sandbox không? 3. Lời bào chữa có hợp lý không?",
+        "verdict": "Strictly 'MALICIOUS' or 'BENIGN'",
+        "confidence_score": 0,
+        "reason": "Tóm tắt phán quyết cuối cùng dựa trên thought_process (Tối đa 50 từ)",
+        "mitre_techniques": ["List of MITRE Techniques identified"]
+    }}
 
     Target Package Name: {package_name}
 
-    PROSECUTOR'S CASE (Qwen Analysis):
+    PROSECUTOR'S CASE:
     {prosecutor_case}
 
-    DEFENSE'S CASE (Gemma Arguments):
+    DEFENSE'S CASE:
     {defense_case}
 
-    Analyze the arguments. Calculate the confidence_score based on the presence of hard evidence. Output your ruling in strict compliance with the required JSON schema format.
-    IMPORTANT: The 'reason' field MUST be written entirely in formal Vietnamese, keeping technical terms in English. Keep the reasoning strictly concise (under 3 sentences) to avoid truncation. If the verdict is 'BENIGN', the 'mitre_techniques' list must be empty [].
+    PROSECUTOR'S REBUTTAL:
+    {rebuttal_case}
     """
     
     logging.info(f"👩‍⚖️ Judge is making the final ruling for: {package_name}...")
     try:
         data = call_local_judge(judge_prompt)
+        if data.get("verdict", "").upper() == "BENIGN":
+            data["mitre_techniques"] = []
         logging.info(f"⚖️ Verdict reached: {data['verdict']} - Confidence: {data.get('confidence_score', 0)}%")
         return data
     except Exception as e:

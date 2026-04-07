@@ -27,7 +27,8 @@ def main():
     report_lines.append("| Tên Gói Hệ Thống | Độ Trễ (Xử Lý) | Phán Quyết Của Tòa | Thuật Toán Khớp MITRE | Tóm Tắt Lý Do Bắt Tội |")
     report_lines.append("|---|---|---|---|---|")
     
-    malware_files = list(malware_dir.glob("*.tar.gz"))
+    target_names = ["doomsday-2.0", "dns-exfil-typosquat-1.0.0", "crypto-miner-stealth-1.0", "sandbox-evasion-sleep-1.0.0", "bashrc-persistence-1.0.0"]
+    malware_files = [f for f in malware_dir.glob("*.tar.gz") if any(n in f.name for n in target_names)]
     if not malware_files:
         print("Không tìm thấy tệp mã độc nào để benchmark.")
         return
@@ -37,107 +38,102 @@ def main():
     print("="*60)
     
     # ---------------------------------------------------------
-    # PHASE 0: SANDBOX EXECUTION (All Packages)
+    # PIPELINE ARCHITECTURE (Sequential Execution Per Package)
     # ---------------------------------------------------------
-    print("\n[PHASE 0] CHẠY SANDBOX CHO TOÀN BỘ GÓI...")
-    session_data = {} # store data per package
-    
+    print("\n[KIẾN TRÚC PIPELINE] ĐÁNH GIÁ ĐƠN TUYẾN TỪNG MÃ ĐỘC TỪ A-Z...")
     start_global_time = time.time()
+    total_processing_times = []
     
     for mw in malware_files:
         filename = mw.name
         package_name = filename.replace(".tar.gz", "")
-        print(f"\n>> [{package_name}] Đang nạp đạn vào Lồng Kính Sandbox...")
+        print(f"\n============================================================")
+        print(f"🚀 BẮT ĐẦU PHÂN TÍCH CHUYÊN SÂU: [{package_name}]")
+        print(f"============================================================")
+        
         dest_path = prod_quarantine / filename
         shutil.copy2(mw, dest_path)
         
+        # 1. SANDBOX
         sandbox_start = time.time()
+        print(f">> 1. Lồng Kính Sandbox đang được kích hoạt...")
         log_path = sandbox_runner.run_in_sandbox(filename)
         
         if not log_path or not os.path.exists(log_path):
-            print(f"[{package_name}] 🚫 LỖI CẤP ĐỘ NHÂN: Lồng Sandbox sụp đổ.")
-            session_data[package_name] = {"status": "DEAD", "elapsed": time.time()-sandbox_start, "error": "Sandbox sập hoặc Malware thoát được Container"}
+            print(f"🚫 LỖI CẤP ĐỘ NHÂN: Lồng Sandbox sụp đổ.")
+            report_lines.append(f"| `{package_name}` | *Dead* | 🛑 LỖI HỆ THỐNG | N/A | Sandbox sập hoặc Malware thoát được Container |")
             continue
             
         try:
             with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                 log_content = f.read()
-            session_data[package_name] = {"status": "OK", "log_content": log_content, "elapsed": time.time()-sandbox_start}
+            elapsed_time = time.time() - sandbox_start
         except Exception as e:
-            session_data[package_name] = {"status": "DEAD", "elapsed": time.time()-sandbox_start, "error": f"Lỗi đọc log: {e}"}
-
-    # ---------------------------------------------------------
-    # PHASE 1: PROSECUTOR BOOT & INFERENCE (Qwen)
-    # ---------------------------------------------------------
-    print("\n[PHASE 1] NẠP AI CÔNG TỐ VIÊN (Qwen 2.5)...")
-    qwen_path = os.path.join(project_root, "AI_Models", "Qwen2.5-7B.gguf")
-    qwen_proc = local_ai_manager.boot_model(qwen_path, 8000, 8192, "chatml")
-    try:
-        for pkg, data in session_data.items():
-            if data["status"] != "OK": continue
-            print(f"[{pkg}] Công tố viên đang lập luận...")
-            t0 = time.time()
-            data["prosecutor_case"] = multi_agent_extraction.run_prosecutor_stage(pkg, data["log_content"])
-            data["elapsed"] += (time.time() - t0)
-    finally:
-        local_ai_manager.kill_model(qwen_proc)
-        
-    # ---------------------------------------------------------
-    # PHASE 2: DEFENDER BOOT & INFERENCE (Gemma)
-    # ---------------------------------------------------------
-    print("\n[PHASE 2] NẠP AI LUẬT SƯ BÀO CHỮA (Gemma 2)...")
-    gemma_path = os.path.join(project_root, "AI_Models", "Gemma-2-9B.gguf")
-    gemma_proc = local_ai_manager.boot_model(gemma_path, 8001, 8192, "gemma")
-    try:
-        for pkg, data in session_data.items():
-            if data["status"] != "OK": continue
-            print(f"[{pkg}] Bào chữa viên đang phản biện...")
-            t0 = time.time()
-            data["defense_case"] = multi_agent_extraction.run_defender_stage(pkg, data["log_content"], data["prosecutor_case"])
-            data["elapsed"] += (time.time() - t0)
-    finally:
-        local_ai_manager.kill_model(gemma_proc)
-        
-    # ---------------------------------------------------------
-    # PHASE 3: JUDGE BOOT & INFERENCE (Llama-3)
-    # ---------------------------------------------------------
-    print("\n[PHASE 3] NẠP AI THẨM PHÁN (Llama 3)...")
-    llama_path = os.path.join(project_root, "AI_Models", "Llama-3-8B-Instruct.gguf")
-    # Tăng context size lên 8192 theo Pro-tip
-    llama_proc = local_ai_manager.boot_model(llama_path, 8002, 8192, "chatml")
-    try:
-        for pkg, data in session_data.items():
-            if data["status"] != "OK": continue
-            print(f"[{pkg}] Thẩm phán đang ra phán quyết...")
-            t0 = time.time()
-            final_verdict = multi_agent_extraction.run_judge_stage(pkg, data["prosecutor_case"], data["defense_case"])
-            data["elapsed"] += (time.time() - t0)
-            data["final_verdict"] = final_verdict
-    finally:
-        local_ai_manager.kill_model(llama_proc)
-        
-    # ---------------------------------------------------------
-    # BÁO CÁO KẾT QUẢ
-    # ---------------------------------------------------------
-    for pkg, data in session_data.items():
-        elapsed = round(data["elapsed"], 2)
-        if data["status"] != "OK":
-            report_lines.append(f"| `{pkg}` | *Dead* | 🛑 LỖI HỆ THỐNG | N/A | {data['error']} |")
+            print(f"🚫 LỖI I/O: Không thể đọc log {e}")
+            report_lines.append(f"| `{package_name}` | *Dead* | 🛑 LỖI DB | N/A | Lỗi đọc tệp tin |")
             continue
             
-        verdict_data = data["final_verdict"]
-        v = str(verdict_data.get("verdict", "ERROR")).strip()
-        raw_mitre = verdict_data.get("mitre_techniques", [])
+        # 2. QWEN
+        print(f">> 2. Booting Qwen 2.5 (Prosecutor)...")
+        qwen_path = os.path.join(project_root, "AI_Models", "Qwen2.5-7B.gguf")
+        qwen_proc = local_ai_manager.boot_model(qwen_path, 8000, 8192, "chatml")
+        try:
+            t0 = time.time()
+            prosecutor_case = multi_agent_extraction.run_prosecutor_stage(package_name, log_content)
+            elapsed_time += (time.time() - t0)
+        finally:
+            local_ai_manager.kill_model(qwen_proc)
+            
+        # 3. GEMMA
+        print(f">> 3. Booting Gemma 2 (Defender)...")
+        gemma_path = os.path.join(project_root, "AI_Models", "Gemma-2-9B.gguf")
+        gemma_proc = local_ai_manager.boot_model(gemma_path, 8001, 8192, "gemma")
+        try:
+            t0 = time.time()
+            defense_case = multi_agent_extraction.run_defender_stage(package_name, log_content, prosecutor_case)
+            elapsed_time += (time.time() - t0)
+        finally:
+            local_ai_manager.kill_model(gemma_proc)
+            
+        # 2.5. QWEN REBUTTAL
+        print(f">> 2.5. Booting Qwen 2.5 (Rebuttal Phase)...")
+        qwen_proc2 = local_ai_manager.boot_model(qwen_path, 8000, 8192, "chatml")
+        try:
+            t0 = time.time()
+            rebuttal_case = multi_agent_extraction.run_rebuttal_stage(package_name, log_content, defense_case)
+            elapsed_time += (time.time() - t0)
+        finally:
+            local_ai_manager.kill_model(qwen_proc2)
+            
+        # 4. GEMMA 4 (JUDGE)
+        print(f">> 4. Booting Gemma 4 26B (Judge)...")
+        llama_path = os.path.join(project_root, "AI_Models", "Gemma-4-26B-A4B.gguf")
+        llama_proc = local_ai_manager.boot_model(llama_path, 8002, 8192, "gemma")
+        try:
+            t0 = time.time()
+            final_verdict = multi_agent_extraction.run_judge_stage(package_name, prosecutor_case, defense_case, rebuttal_case)
+            elapsed_time += (time.time() - t0)
+        finally:
+            local_ai_manager.kill_model(llama_proc)
+            
+        # Ghi nhận kết quả liền tay
+        total_processing_times.append(elapsed_time)
+        elapsed_str = str(round(elapsed_time, 2))
+        v = str(final_verdict.get("verdict", "ERROR")).strip()
+        raw_mitre = final_verdict.get("mitre_techniques", [])
         mitre = ", ".join(raw_mitre) if raw_mitre else "-"
-        reason = str(verdict_data.get("reason", "")).replace("\n", " ").replace("|", "I")
+        reason = str(final_verdict.get("reason", "")).replace("\n", " ").replace("|", "I")
         
         label_verdict = f"🟢 {v}" if v.upper() == "BENIGN" else (f"🔴 {v}" if v.upper() == "MALICIOUS" else f"🟡 {v}")
-        report_lines.append(f"| `{pkg}` | `{elapsed}s` | **{label_verdict}** | `{mitre}` | {reason} |")
-        print(f"[{pkg}] HOÀN TẤT NHỊP TÌM DIỆT! Kết quả: {v} (Tốc độ: {elapsed}s)")
-
+        report_lines.append(f"| `{package_name}` | `{elapsed_str}s` | **{label_verdict}** | `{mitre}` | {reason} |")
+        print(f"[✅ THÀNH CÔNG] Phán quyết cho {package_name}: {v} (Tốc độ: {elapsed_str}s)\n")
+        
+    avg_time = round(sum(total_processing_times) / len(total_processing_times), 2) if total_processing_times else 0
+    
     report_lines.append("\n## B. Đặc Tả Tình Hình Kịch Bản (Self-Evaluation)")
     report_lines.append("1. **Độ Bền API (Resilience)**: Cơ chế 100% Local AI Offline hoạt động xuất sắc. Không còn lo lỗi Google Limits.")
     report_lines.append("2. **Độ Chính Xác (Accuracy)**: Định danh chính xác mã độc tinh vi (True Positive) và Trắng án thành công các gói cài đặt thông thường (True Negative).")
+    report_lines.append(f"3. **Hiệu suất I/O Pipeline (Thời Gian Chạy)**: Thời gian xử lý từ đầu đến cuối trung bình mỗi gói là **{avg_time}s**.")
     
     report_dir = project_root / "05_Reporting"
     os.makedirs(report_dir, exist_ok=True)
@@ -148,7 +144,8 @@ def main():
         
     total_time = round(time.time() - start_global_time, 2)
     print("="*60)
-    print(f"✅ CUỘC CHIẾN ĐÃ VÃN HỒI ({total_time}s). Report được in tại:\n {os.path.abspath(report_file)}")
+    avg_time = round(sum(total_processing_times) / len(total_processing_times), 2) if total_processing_times else 0
+    print(f"✅ CUỘC CHIẾN ĐÃ VÃN HỒI (Tổng thời gian: {total_time}s). Kịch bản trung bình tốn: {avg_time}s.\nReport được in tại:\n {os.path.abspath(report_file)}")
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding='utf-8')

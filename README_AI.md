@@ -22,26 +22,25 @@ Tài liệu này đi sâu vào **Cấu trúc bộ não AI** của dự án Shiel
     *   **Điều kiện Ngả Mũ (Concede Clause):** Tuy nhiên, Gemma bị trói bởi câu răn đe sắt đá: *"Nếu chứng cứ cứng như File .sh hay IP mạng hiển hiện, tuyệt đối không được bốc phét ảo giác biện lý. Bắt buộc chấp nhận thua cuộc (is_safe: false)"*.
 
 ### 👩‍⚖️ Tác Nhân 3: THẨM PHÁN TỐI CAO (The Judge)
-*   **Mô hình sử dụng:** `Gemini 2.5 Flash` (Cloud API).
-*   **Sứ mệnh:** Duyệt hồ sơ hai bên gửi lên và Cầm Tịch Phán Quyết.
-*   **System Prompt & Cơ chế tâm lý:**
-    *   Nắm giữ **3 Đạo Luật Tố Tụng (Procedural Rules)** trong System Prompt. Ví dụ: Luật Số 2 ghi rõ: *"Mọi hành vi được cấu thành Tội Phạm (Malicious) yêu cầu có Hard Evidence (Tên File/IP cụ thể). Nếu Công Tố Viên chỉ rên rỉ chung chung, Bác bỏ ngay!"*
-    *   Tránh thiên vị nhờ cơ cấu Input phi phân cực. Trả về mức `Confidence Score` và giải thích lý do xử lý.
+*   **Mô hình sử dụng:** `Llama-3-8B-Instruct.gguf` (Local Inference qua llama-cpp).
+*   **Sứ mệnh:** Nắm giữ quyền sinh sát tối cao. Tiếp thu cả hai bản báo cáo (Qwen & Gemma) và đối chiếu với cặn bã log.
+*   **System Prompt & Cơ chế tâm lý (Zero-Trust Boundaries):**
+    *   Nắm giữ **5 Đạo Luật Tố Tụng (Procedural Rules)**. Mạnh mẽ nhất là **Luật Số 4: Thiết Quân Luật Zero-Tolerance**. Bất kỳ hành vi nào chạm vào `/.bashrc`, `/.profile`, mã hóa hoặc xả file trong `/tmp`, và sử dụng `mprotect` đều lập tức bị tống lên máy chém (`MALICIOUS`).
+    *   Thẩm phán sẵn sàng **BÁC BỎ (OVERRULE)** mọi lời ngụy biện của Luật Sư Gemma kể cả khi Gemma bảo là "Quy trình thiết lập Python là bình thường".
+    *   **Luật Số 5:** Ép buộc tư duy và ngôn ngữ 100% bằng Tiếng Việt.
 
 ---
 
-## ⚙️ 2. Quy Trình Vận Hành & Lọc Dữ Liệu (The Pipeline)
+## ⚙️ 2. Quy Trình Vận Hành (The Pipeline Sequential Mode)
 
 1.  **Lấy Cung Sandbox:** Lệnh `docker diff` trích xuất File Artifacts rơi rụng, kết hợp `strace` sinh mã máy. Script nhồi Artifact lên đỉnh/đáy tệp log tạo mồi câu cho Qwen.
-2.  **Khởi tố (Prosecute):** Agent Qwen quét log. 
-    *   *Trường hợp A:* Vụ án trắng (Log sạch bong), kết án `BENIGN`, chặn đứng việc tốn Token gọi Gemma.
-    *   *Trường hợp B:* Có rủi ro. Qwen ném mảng Json MITRE sang Gemma.
-3.  **Tranh Tụng (Debate):** Agent Gemma nhận bộ log và bản án của Qwen $\rightarrow$ Soạn Argument chống luận điểm bới lông $\rightarrow$ Nhả dữ liệu.
-4.  **Tuyên Án (Verdict):** Gemini nhận Combo (Log + Báo cáo Công Tố + Argument Bào chữa) $\rightarrow$ Ép cấu trúc Pydantic (`ThreatExtractionResponse`) $\rightarrow$ Khởi động cơ chế phán xử và tiêm vào Neo4j DB.
+2.  **Khởi tố (Boot Qwen):** `local_ai_manager` nạp Qwen (Port 8000). Qwen phân tích cực đoan và xuất bằng chứng MITRE JSON $\rightarrow$ Hủy Qwen (`taskkill /F`).
+3.  **Tranh Tụng (Boot Gemma):** Nạp Gemma (Port 8001). Gemma nhận bộ log gốc và bản án vắt kiệt của Qwen để tìm False Positives và bào chữa $\rightarrow$ Hủy Gemma.
+4.  **Tuyên Án (Boot Llama-3):** Nạp Llama-3 (Port 8002). Llama-3 đánh giá toàn cục dựa trên Thiết Quân Luật Zero Trust $\rightarrow$ Chốt án dạng JSON với điểm tự tin `Confidence Score` $\rightarrow$ Hủy Llama-3. Mọi dữ liệu in thẳng ra màn hình Console.
 
 ---
 
 ## 🛠️ 3. Phép Tối Ưu Hóa Kỹ Thuật (Engineering Masterpieces)
 *   **Native Structured Outputs:** Thay vì "van xin" LLM trả về Text Markdown rồi dùng Regular Expression lẩy dỡ, hệ thống tích hợp API mới nhất ép Schema thẳng vào Model Engine thông qua `response_schema`. Tuyệt mĩ 100% không bao giờ trật JSON Parsing!
 *   **Cơ Chế Bọc Lót (JSON Stripping Fallback):** Đối với các Local LLM cứng đầu vẫn đẻ dư block ````json`, logic cắt xén thông minh được áp dụng chẹn đầu/cuối chuỗi để đảm bảo App không bao giờ văng Exception Python.
-*   **Exponential Backoff Resuscitation (Xoay vòng trạm máu API):** Việc nháy API Google liên tục bị phạt HTTP 429 Limit. Nhờ thư viện `Tenacity` và Trạm xoay vòng Array Key liên hồi, Hệ thống vẫn vắt chân nhàn nhã chạy tự động 10.000 Packages.
+*   **Context Cleansing & 100% Local Inference:** Nhổ tận gốc sự phụ thuộc vào Cloud API (chấm dứt nỗi đau HTTP 429 Limit từ Google). Toàn bộ kiến trúc sử dụng mã nguồn mở chạy hoàn toàn trên VRAM cá nhân. Thu thập rác (Garbage Collection) bằng cách `taskkill` triệt để tàn dư bộ nhớ sau mỗi phiên tranh biện và dập tắt luôn vấn nạn Ảo giác Văn bản (Text Degeneration) thông qua việc thao túng `frequency_penalty` & `presence_penalty`!

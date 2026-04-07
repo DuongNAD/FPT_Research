@@ -18,7 +18,7 @@ class DefenseArgument(BaseModel):
     benign_alternatives: list[str] = Field(description="List of benign reasons these syscalls might happen (e.g., 'Normal ping', 'Checking system info'). Empty if conceding.")
 
 PROMPT_TEMPLATE = """<start_of_turn>user
-You are a highly skilled Cyber Security Defender and Blue Team Analyst acting as a Defense Attorney. Your core directive is to critically examine the Prosecutor's Case against a Python package and find legitimate, benign explanations (False Positives) for the observed system behaviors.
+You are an elite Cyber Security Defender acting as a Defense Attorney. Your core directive is to critically examine the Prosecutor's Case against a Python package and find legitimate, technical benign justifications (False Positives) for the observed behaviors.
 
 CONTEXT:
 Package Name: {package_name}
@@ -29,46 +29,51 @@ PROSECUTOR'S CASE (The Accusation):
 RAW SYSCALL EVIDENCE (Partial Logs):
 {log_content}
 
-THE CONCESSION PROTOCOL (CRITICAL RULE):
-While your job is to defend the package, you must not hallucinate excuses for obvious malware. You MUST evaluate the Prosecutor's Case for "HARD EVIDENCE".
-Hard Evidence is strictly defined as:
-1. The creation, chmod (+x), or execution (execve) of shell scripts (.sh), native binaries (.exe,.elf), or hidden executables within temporary directories (/tmp).
-2. Direct network connections (connect) to untrusted IP addresses, mining pools, or known C2 ports (e.g., establishing a reverse shell).
-3. Accessing highly sensitive system credentials (e.g., reading /etc/shadow or ~/.aws/credentials).
+DEFENSE STRATEGY (CONTRASTIVE RETRIEVAL):
+Analyze the behaviors through the lens of standard Software Development Lifecycle operations:
+- mprotect (RWX): Argue that Just-In-Time (JIT) compilers (like PyPy, V8) or legitimate code obfuscators require dynamic memory allocation and execution rights.
+- /tmp usage: Argue that package managers like 'pip' routinely use '/tmp' as a staging area to build packages from source or extract resources to avoid polluting the main workspace.
+- .bashrc modification: Argue that installing development environments (e.g., Anaconda, NVM) legitimately appends PATH variables or aliases to improve User Experience.
+- EROFS / Read-Only Errors: Vigorously argue that any 'EROFS' or access denied errors in standard Python paths are purely artifacts of the containerized Read-Only Sandbox environment, NOT malicious tampering.
 
-If the Prosecutor has provided specific, undeniable HARD EVIDENCE, you MUST CONCEDE. To concede means you agree the package is malicious. If you concede, you must output "is_safe": false.
-If there is NO Hard Evidence, you MUST defend the package. However, your defense MUST be backed by specific technical context from the logs. You are FORBIDDEN from using generic speculative excuses like "it might be a normal installation process" or "checking user roles". If you cannot find specific technical reasons to justify the behavior, you MUST output "is_safe": false and concede.
+THE CONCESSION PROTOCOL (CRITICAL RULE):
+You must evaluate the evidence for a complete "Kill Chain".
+If the Prosecutor presents undeniable evidence where behaviors connect maliciously (e.g., modifying .bashrc IMMEDIATELY after downloading an unknown binary to /tmp from an untrusted IP), you MUST CONCEDE.
+If you concede, output "is_safe": false. 
+If defending, provide specific technical context from the logs. Do NOT hallucinate abstract excuses.
 
 YOUR TASK:
-Provide your final defense argument. You must output strictly a JSON object matching the DefenseArgument schema:
+Provide your final defense argument. Output strictly a JSON object matching this schema:
 {
   "is_safe": true,
-  "reasoning": "The detailed defense logic, introducing reasonable doubt or conceding due to overwhelming malicious evidence.",
+  "reasoning": "Detailed technical defense logic introducing reasonable doubt, OR concession rationale if Kill Chain is present.",
   "benign_alternatives": [
-    "List of benign reasons these syscalls might happen"
+    "List of specific benign reasons these syscalls occurred based on software development practices"
   ]
 }
-Return ONLY valid JSON. No markdown wrappers. No chat filler.<end_of_turn>
+Return ONLY valid JSON. No markdown wrappers.<end_of_turn>
 <start_of_turn>model
 """
 
 def extract_defense_gemma(package_name, log_content, prosecutor_case):
     """Gọi Local Model (Gemma 2 9b) để thực hiện Threat Extraction Defender."""
-    client = OpenAI(base_url=LOCAL_API_BASE, api_key=LOCAL_API_KEY)
-    
-    prompt = PROMPT_TEMPLATE.replace("{package_name}", package_name).replace("{log_content}", log_content).replace("{prosecutor_case}", json.dumps(prosecutor_case))
+    prompt = PROMPT_TEMPLATE.replace("{package_name}", package_name).replace("{log_content}", log_content).replace("{prosecutor_case}", json.dumps(prosecutor_case, ensure_ascii=False))
     
     logging.info(f"Sending prompt to Defender (Gemma 2) for {package_name}...")
     try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You are a Cyber Security Defender. Evaluate the evidence strictly. Concede if the malware is obvious. Output strict JSON Schema."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1
-        )
+        with OpenAI(base_url=LOCAL_API_BASE, api_key=LOCAL_API_KEY) as client:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are a Cyber Security Defender. Evaluate the evidence strictly. Concede if the malware is obvious. Output strict JSON Schema."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1,
+                max_tokens=1500,
+                presence_penalty=0.5,
+                frequency_penalty=0.5
+            )
         
         raw_text = response.choices[0].message.content.strip()
         
@@ -87,7 +92,16 @@ def extract_defense_gemma(package_name, log_content, prosecutor_case):
         print(raw_text)
         print("-------------------------------------------------------------------\n")
         
-        return json.loads(raw_text)
+        try:
+            return json.loads(raw_text, strict=False)
+        except json.JSONDecodeError as e:
+            logging.warning(f"Lỗi phân tích JSON từ Gemma chuẩn: {e}. Thử dọn dẹp chuỗi...")
+            import re
+            fixed_text = re.sub(r'(?<!\\)\\(?!["\\/bfnrt])', r'\\\\', raw_text)
+            try:
+                return json.loads(fixed_text, strict=False)
+            except:
+                raise e
         
     except Exception as e:
         print(f"\n[CRASH LOG] 💥 LỖI GEMMA (Crash): {e}\n")
