@@ -1,8 +1,8 @@
 FROM python:3.10-slim
 
-# Cài đặt strace, tcpdump, sudo và libfaketime
-RUN apt-get update && \
-    apt-get install -y strace tcpdump sudo ca-certificates faketime && \
+# Cài đặt strace, tcpdump, sudo, libfaketime, và WINE (để chạy mã độc .exe)
+RUN dpkg --add-architecture i386 && apt-get update && \
+    apt-get install -y strace tcpdump sudo ca-certificates faketime wine wine32 wine64 && \
     rm -rf /var/lib/apt/lists/*
 
 # Đổi tên libfaketime để giấu nhẹm (Anti-Evasion tricks)

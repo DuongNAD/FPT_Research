@@ -1,0 +1,41 @@
+{
+    "thresholds": {
+        "alert_tag_score_minimum": 20
+    },
+    "scoring_rules": {
+        "score_plus_40": {
+            "description": "Cực Kỳ Đặc Biệt Nguy Hiểm (Extremely Dangerous: Trực tiếp can thiệp bảo mật hệ thống)",
+            "keywords": [
+                "/etc/passwd", 
+                "/etc/shadow", 
+                ".bashrc", 
+                "PROT_EXEC", 
+                "ptrace", 
+                "/proc/self/maps", 
+                "LD_PRELOAD", 
+                "mmap", 
+                "libevil"
+            ]
+        },
+        "score_plus_30": {
+            "description": "Nguy Hiểm (Dangerous: Ghi/Tạo file nhạy cảm ở thư mục tạm)",
+            "write_operations": ["O_WRONLY", "O_CREAT", "chmod"],
+            "target_directories": ["/tmp/"],
+            "target_extensions": [".so", ".sh"],
+            "ignore_context_keywords": ["pip-req-build", "pip-record"]
+        },
+        "score_plus_20": {
+            "description": "Cảnh Báo (Warning: Quét hoặc mở cổng nội bộ nhạy cảm)",
+            "keywords": [
+                "port 21 ", 
+                "port 22 ", 
+                "port 4444"
+            ]
+        },
+        "score_minus_30": {
+            "description": "Hành Vi An Toàn (Safe: Truy cập mạng tiêu chuẩn hoặc định dạng vô hại)",
+            "safe_network_keywords": ["port 443", "port 80", "https", "104.21.59.19"],
+            "safe_extensions": [".bin", ".pt"]
+        }
+    }
+}

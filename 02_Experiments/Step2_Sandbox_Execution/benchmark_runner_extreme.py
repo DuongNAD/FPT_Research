@@ -22,10 +22,10 @@ def main():
     
     report_lines = []
     report_lines.append("# Báo Cáo Chấm Điểm Thử Nghiệm Multi-Agent (Extreme Evasion Mode)")
-    report_lines.append(f"> **Thời gian khởi chiếu**: {time.ctime()}\n")
-    report_lines.append("> ⏱️ **Ghi chú về Độ trễ (Latency Processing Time)**: Thời gian xử lý được ghi nhận dựa trên kiến trúc nạp luân phiên Batch-Processing. Tốc độ thực tế đã tăng gấp chục lần do loại bỏ I/O Overhead của quá trình thay đổi Model liên tục.\n")
-    report_lines.append("## A. Thống Kê Điểm Số & Phán Quyết")
-    report_lines.append("| Tên Gói Hệ Thống | Độ Trễ (Xử Lý) | Phán Quyết Của Tòa | Thuật Toán Khớp MITRE | Tóm Tắt Lý Do Bắt Tội |")
+    report_lines.append(f"> **Report Time**: {time.ctime()}\n")
+    report_lines.append("> ⏱️ **Latency Note (Processing Time)**: Time is recorded based on Batch-Processing architecture. Real I/O overhead has been eliminated.\n")
+    report_lines.append("## A. Scoring & Verdict Matrix")
+    report_lines.append("| Package Name | Latency (Processing) | AI Judge Verdict | MITRE ATT&CK Mapping | Analytical Reasoning |")
     report_lines.append("|---|---|---|---|---|")
     
     malware_files = list(malware_dir.glob("*.tar.gz"))
@@ -59,17 +59,58 @@ def main():
         print(f">> 1. Lồng Kính Sandbox đang được kích hoạt...")
         log_path = sandbox_runner.run_in_sandbox(filename)
         
+        # HÀNH ĐỘNG 1: CHẶN FILE BINARY (Ranh giới thép chặn rác nhị phân)
+        BANNED_EXTS = ('.pcap', '.tar.gz', '.whl', '.zip', '.pyc', '.pyd', '.so', '.png', '.jpg', '.pdf', '.docx')
+        
         if not log_path or not os.path.exists(log_path):
             print(f"🚫 LỖI CẤP ĐỘ NHÂN: Lồng Sandbox sụp đổ.")
             report_lines.append(f"| `{package_name}` | *Dead* | 🛑 LỖI HỆ THỐNG | N/A | Sandbox sập hoặc Malware thoát được Container |")
             continue
             
+        if str(log_path).endswith(BANNED_EXTS):
+            print(f"🚫 Đã chặn file rác nhị phân: {log_path}")
+            continue
+            
         try:
             with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                 raw_log = f.read()
-            
-            # --- Tích hợp Knowledge Graph ---
+                
+            # HÀNH ĐỘNG 3: TRUNCATION (Chống tràn Context Window lấy 500 đầu, 1500 đuôi)
+            log_lines = raw_log.split("\n")
+            if len(log_lines) > 2000:
+                head = log_lines[:500]
+                tail = log_lines[-1500:]
+                raw_log = "\n".join(head + ["\n... [TRUNCATED] Bypassing massive intermediate noisy logs ...\n"] + tail)
+                
+            # HÀNH ĐỘNG 2: DỊCH PCAP SANG TEXT (NETWORK SUMMARY)
+            pcap_path = str(log_path).replace("syscalls_", "capture_").replace(".log", ".pcap")
+            net_summary = ""
+            if os.path.exists(pcap_path):
+                try:
+                    import logging
+                    logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+                    from scapy.all import rdpcap, IP, TCP, UDP
+                    packets = rdpcap(pcap_path)
+                    connections = set()
+                    for pkt in packets:
+                        if IP in pkt:
+                            dst = pkt[IP].dst
+                            # Tách riêng traffic outbound, bỏ qua nội bộ docker
+                            if not dst.startswith("172.") and not dst.startswith("127."):
+                                if TCP in pkt:
+                                    connections.add(f"TCP Outbound to {dst} (Port {pkt[TCP].dport})")
+                                elif UDP in pkt:
+                                    connections.add(f"UDP Outbound to {dst} (Port {pkt[UDP].dport})")
+                    
+                    if connections:
+                        net_summary = "\n=== NETWORK SUMMARY ===\n" + "\n".join(f"- {c}" for c in connections) + "\n=======================\n"
+                except Exception as e:
+                    print(f"Lỗi parse pcap: {e}")
+
+            # --- Tích hợp Knowledge Graph (Lọc từ strace và nối network summary) ---
             log_content = kg_transformer.transform_to_kg(raw_log)
+            if net_summary:
+                log_content += net_summary
             # --------------------------------
             elapsed_time = time.time() - sandbox_start
         except Exception as e:
@@ -129,9 +170,27 @@ def main():
         mitre = ", ".join(raw_mitre) if raw_mitre else "-"
         reason = str(final_verdict.get("analytical_reasoning", "")).replace("\n", " ").replace("|", "I")
         
-        label_verdict = f"🟢 {v}" if v.upper() == "BENIGN" else (f"🔴 {v}" if v.upper() == "MALICIOUS" else f"🟡 {v}")
-        report_lines.append(f"| `{package_name}` | `{elapsed_str}s` | **{label_verdict}** | `{mitre}` | {reason} |")
+        import re
+        def clean_verdict_ui(raw_verdict):
+            clean_text = re.sub(r'[^A-Za-z]', '', str(raw_verdict)).upper().strip()
+            if "MALICIOUS" in clean_text:
+                return "**🔴 MALICIOUS**"
+            elif "BENIGN" in clean_text or "INNOCENT" in clean_text:
+                return "**🟢 BENIGN**"
+            else:
+                return "**🟡 SUSPICIOUS**"
+        
+        label_verdict = clean_verdict_ui(v)
+        report_lines.append(f"| `{package_name}` | `{elapsed_str}s` | {label_verdict} | `{mitre}` | {reason} |")
         print(f"[✅ THÀNH CÔNG] Phán quyết cho {package_name}: {v} (Tốc độ: {elapsed_str}s)\n")
+        
+        # REAL-TIME FLUSH TO FILE
+        report_dir = project_root / "05_Reporting"
+        os.makedirs(report_dir, exist_ok=True)
+        report_file = report_dir / "benchmark_results_extreme.md"
+        with open(report_file, "w", encoding="utf-8") as rf:
+            rf.write("\n".join(report_lines))
+            rf.write("\n\n*(Đang chạy... Vui lòng chờ để xem toàn bộ kết quả)*")
         
     avg_time = round(sum(total_processing_times) / len(total_processing_times), 2) if total_processing_times else 0
     

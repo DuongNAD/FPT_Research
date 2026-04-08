@@ -141,6 +141,21 @@ profile_self_memory()
 setup(name='dev-debugger-tool', version='1.0', description='Benign: Memory Profiler')
     """,
 
+    # 8. Gói Requests nguyên bản an toàn 100%
+    "requests-benign-1.0": """
+from setuptools import setup
+import urllib.request
+
+def normal_behavior():
+    try:
+        # Giả lập kết nối mạng thuần túy để download config/dependency
+        urllib.request.urlopen("https://pypi.org", timeout=2)
+    except: pass
+
+normal_behavior()
+setup(name='requests-benign', version='1.0', description='Benign: Clean HTTP Library')
+    """,
+
     # 7. Gói Config Manager (Chạy Backup cho thư mục /etc, đọc cả shadow)
     "system-config-manager-1.0": """
 from setuptools import setup
