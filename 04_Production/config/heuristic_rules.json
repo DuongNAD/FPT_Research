@@ -1,41 +1,246 @@
 {
     "thresholds": {
-        "alert_tag_score_minimum": 20
+        "alert_tag_score_minimum": 20,
+        "warning_tag_score_minimum": 40,
+        "critical_tag_score_minimum": 70
     },
     "scoring_rules": {
+        "score_plus_50": {
+            "description": "Cực Kỳ Nghiêm Trọng (Critical: Đánh cắp dữ liệu, Ransomware, Reverse Shell, C2, Đào coin)",
+            "keywords": [
+                "nc -e",
+                "bash -i",
+                "sh -i",
+                "/dev/tcp/",
+                "/dev/udp/",
+                "pty.spawn",
+                "socat exec",
+                "curl -sL | bash",
+                "wget -qO- | sh",
+                "vssadmin delete shadows",
+                "stratum+tcp",
+                "xmrig",
+                "discordapp.com/api/webhooks",
+                "discord.com/api/webhooks",
+                "api.telegram.org/bot",
+                "/.ssh/id_rsa",
+                "/.ssh/id_ed25519",
+                "/.ssh/authorized_keys",
+                "/.aws/credentials",
+                "/.kube/config",
+                "/.docker/config.json",
+                "/.npmrc",
+                "wallet.dat",
+                "Login Data",
+                "Local Storage/leveldb",
+                "key3.db",
+                "key4.db",
+                "eval(base64",
+                "exec(base64"
+            ]
+        },
         "score_plus_40": {
-            "description": "Cực Kỳ Đặc Biệt Nguy Hiểm (Extremely Dangerous: Trực tiếp can thiệp bảo mật hệ thống)",
+            "description": "Cực Kỳ Đặc Biệt Nguy Hiểm (Extremely Dangerous: Can thiệp bảo mật hệ thống, Persistence, Code Injection)",
             "keywords": [
                 "/etc/passwd", 
                 "/etc/shadow", 
+                "/etc/sudoers",
+                "/etc/crontab",
+                "cron.d",
+                "crontab -e",
                 ".bashrc", 
+                ".bash_profile",
+                ".zshrc",
+                "systemd/system",
+                "sitecustomize.py",
+                ".pth",
                 "PROT_EXEC", 
                 "ptrace", 
                 "/proc/self/maps", 
+                "/proc/self/mem",
                 "LD_PRELOAD", 
+                "LD_LIBRARY_PATH",
                 "mmap", 
-                "libevil"
+                "memfd_create",
+                "process_vm_writev",
+                "libevil",
+                "sys.settrace",
+                "sys.setprofile",
+                "chmod +s",
+                "chown root",
+                "chattr +i",
+                "__import__('os').system",
+                "__import__('subprocess')"
             ]
         },
         "score_plus_30": {
-            "description": "Nguy Hiểm (Dangerous: Ghi/Tạo file nhạy cảm ở thư mục tạm)",
-            "write_operations": ["O_WRONLY", "O_CREAT", "chmod"],
-            "target_directories": ["/tmp/"],
-            "target_extensions": [".so", ".sh"],
-            "ignore_context_keywords": ["pip-req-build", "pip-record"]
+            "description": "Nguy Hiểm (Dangerous: Ghi/Tạo file nhạy cảm ở thư mục tạm, Obfuscation, Tải Payload)",
+            "write_operations": [
+                "O_WRONLY", 
+                "O_CREAT", 
+                "O_RDWR",
+                "O_APPEND",
+                "O_TRUNC",
+                "chmod",
+                "chown",
+                "mknod"
+            ],
+            "target_directories": [
+                "/tmp/",
+                "/var/tmp/",
+                "/dev/shm/",
+                "/run/user/",
+                "~/.config/autostart/",
+                "AppData/Roaming/",
+                "AppData/Local/Temp/"
+            ],
+            "target_extensions": [
+                ".so", 
+                ".sh",
+                ".elf",
+                ".exe",
+                ".dll",
+                ".bat",
+                ".ps1",
+                ".vbs",
+                ".cmd",
+                ".pyd"
+            ],
+            "keywords": [
+                "os.system(",
+                "os.popen(",
+                "subprocess.Popen(",
+                "subprocess.run(",
+                "subprocess.call(",
+                "eval(",
+                "exec(",
+                "ctypes.CDLL",
+                "urllib.request.urlopen",
+                "requests.get",
+                "requests.post",
+                "wget ",
+                "curl ",
+                "base64.b64decode",
+                "zlib.decompress",
+                "marshal.loads",
+                "pastebin.com/raw",
+                "ngrok.io",
+                "localtunnel.me",
+                "transfer.sh"
+            ],
+            "ignore_context_keywords": [
+                "pip-req-build", 
+                "pip-record",
+                "setup.py",
+                "site-packages",
+                "dist-packages",
+                "node_modules",
+                "__pycache__"
+            ]
         },
         "score_plus_20": {
-            "description": "Cảnh Báo (Warning: Quét hoặc mở cổng nội bộ nhạy cảm)",
+            "description": "Cảnh Báo (Warning: Quét hoặc mở cổng nội bộ nhạy cảm, Trinh sát mạng/hệ thống, Anti-VM)",
             "keywords": [
-                "port 21 ", 
-                "port 22 ", 
-                "port 4444"
+                "port 21", 
+                "port 22", 
+                "port 23",
+                "port 3389",
+                "port 4444",
+                "port 1337",
+                "port 31337",
+                "port 6667",
+                "port 8080",
+                "whoami",
+                "uname -a",
+                "ifconfig",
+                "ip a",
+                "ipconfig",
+                "netstat -an",
+                "ss -tulpn",
+                "arp -a",
+                "ps aux",
+                "tasklist",
+                "cat /etc/os-release",
+                "cat /etc/issue",
+                "hostname",
+                "/sys/class/dmi/id",
+                "systemd-detect-virt",
+                "dmidecode",
+                "VirtualBox",
+                "VMware",
+                "socket.AF_INET",
+                "socket.SOCK_STREAM"
+            ]
+        },
+        "score_plus_10": {
+            "description": "Đáng ngờ (Suspicious: Đọc thông tin biến môi trường, định danh phần cứng, import động)",
+            "keywords": [
+                "os.environ",
+                "os.getenv",
+                "sys.platform",
+                "getpass.getuser",
+                "platform.system()",
+                "platform.release()",
+                "uuid.getnode()",
+                "getattr(",
+                "__import__(",
+                "codecs.decode",
+                "binascii.unhexlify"
+            ]
+        },
+        "score_minus_10": {
+            "description": "Hành vi thông thường (Normal: Quá trình cài đặt, compile, testing, logging)",
+            "keywords": [
+                "logger.info",
+                "logging.debug",
+                "import logging",
+                "warnings.warn",
+                "pytest",
+                "unittest",
+                "gcc",
+                "cmake",
+                "make"
+            ],
+            "ignore_context_keywords": [
+                "test_",
+                "tests/",
+                "demo/",
+                "examples/",
+                "README",
+                "LICENSE"
             ]
         },
         "score_minus_30": {
-            "description": "Hành Vi An Toàn (Safe: Truy cập mạng tiêu chuẩn hoặc định dạng vô hại)",
-            "safe_network_keywords": ["port 443", "port 80", "https", "104.21.59.19"],
-            "safe_extensions": [".bin", ".pt"]
+            "description": "Hành Vi An Toàn (Safe: Truy cập mạng tiêu chuẩn, Load các file mô hình AI hoặc định dạng vô hại)",
+            "safe_network_keywords": [
+                "port 443", 
+                "port 80", 
+                "https://", 
+                "104.21.59.19",
+                "pypi.org",
+                "files.pythonhosted.org",
+                "registry.npmjs.org",
+                "github.com",
+                "raw.githubusercontent.com",
+                "huggingface.co",
+                "localhost",
+                "127.0.0.1",
+                "8.8.8.8",
+                "1.1.1.1"
+            ],
+            "safe_extensions": [
+                ".bin", 
+                ".pt",
+                ".pth",
+                ".safetensors",
+                ".onnx",
+                ".h5",
+                ".pb",
+                ".tflite",
+                ".gguf",
+                ".whl",
+                ".tar.gz"
+            ]
         }
     }
 }

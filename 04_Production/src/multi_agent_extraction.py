@@ -119,34 +119,54 @@ def smart_filter_log(log_content, max_chars=13000):
         risk_score = 0
         rules = HEURISTIC_RULES.get("scoring_rules", {})
         
-        # 1. +40: Cực Kỳ Đặc Biệt Nguy Hiểm (Extremely Dangerous)
-        if any(bad in line_str for bad in rules.get("score_plus_40", {}).get("keywords", [])):
-            risk_score += 40
-            
-        # 2. +30: Nguy Hiểm (Dangerous)
-        rule_30 = rules.get("score_plus_30", {})
-        is_write_op = any(op in line_str for op in rule_30.get("write_operations", []))
-        if is_write_op and any(dir_path in line_str for dir_path in rule_30.get("target_directories", [])) \
-           and any(ext in line_str for ext in rule_30.get("target_extensions", [])):
-            # Khấu trừ ngữ cảnh
-            if not any(ign in line_str for ign in rule_30.get("ignore_context_keywords", [])):
-                risk_score += 30
+        # Sử dụng Vòng lặp lấy toàn bộ khóa score_plus_X và score_minus_X mà user định nghĩa
+        for rule_name, rule_content in rules.items():
+            if rule_name.startswith("score_plus_"):
+                try: points = int(rule_name.split("_")[2])
+                except: continue
+                matched = False
                 
-        # 3. +20: Cảnh Báo (Warning)
-        if any(port in line_str for port in rules.get("score_plus_20", {}).get("keywords", [])):
-            risk_score += 20
-            
-        # 4. -30: Hành Vi An Toàn (Safe/Deduction)
-        rule_minus = rules.get("score_minus_30", {})
-        safe_net = any(safe in line_str.lower() for safe in rule_minus.get("safe_network_keywords", []))
-        safe_ext = any(ext in line_str for ext in rule_minus.get("safe_extensions", []))
-        if safe_net or safe_ext:
-            risk_score -= 30
-            
-        threshold = HEURISTIC_RULES.get("thresholds", {}).get("alert_tag_score_minimum", 20)
-        if risk_score >= threshold:
+                if any(kw in line_str for kw in rule_content.get("keywords", [])):
+                    matched = True
+                elif rule_content.get("write_operations") and any(op in line_str for op in rule_content.get("write_operations")):
+                    if not rule_content.get("target_directories") or any(d in line_str for d in rule_content.get("target_directories")):
+                        if not rule_content.get("target_extensions") or any(e in line_str for e in rule_content.get("target_extensions")):
+                            matched = True
+                            
+                if matched and not any(ign in line_str for ign in rule_content.get("ignore_context_keywords", [])):
+                    risk_score += points
+                    
+            elif rule_name.startswith("score_minus_"):
+                try: points = int(rule_name.split("_")[2])
+                except: continue
+                matched = False
+                
+                if any(safe in line_str.lower() for safe in rule_content.get("safe_network_keywords", [])):
+                    matched = True
+                if any(ext in line_str for ext in rule_content.get("safe_extensions", [])):
+                    matched = True
+                if any(kw in line_str for kw in rule_content.get("keywords", [])):
+                    matched = True
+                    
+                if matched and not any(ign in line_str for ign in rule_content.get("ignore_context_keywords", [])):
+                    risk_score -= points
+
+        # Lấy Thresholds để cấp Tag báo động
+        thresholds = HEURISTIC_RULES.get("thresholds", {})
+        critical_thresh = thresholds.get("critical_tag_score_minimum", 70)
+        warning_thresh = thresholds.get("warning_tag_score_minimum", 40)
+        alert_thresh = thresholds.get("alert_tag_score_minimum", 20)
+
+        if risk_score >= critical_thresh:
+            line_str += f" [TAG_CRITICAL_THREAT: Score={risk_score}]"
+            clean_logs.append(line_str)
+            continue
+        elif risk_score >= warning_thresh:
             line_str += f" [TAG_HIGH_RISK_EVENT: Score={risk_score}]"
-            # Thêm luôn dòng rủi ro cao mà không cần quan tâm là .pyc hay không
+            clean_logs.append(line_str)
+            continue
+        elif risk_score >= alert_thresh:
+            line_str += f" [TAG_SUSPICIOUS_ACTIVITY: Score={risk_score}]"
             clean_logs.append(line_str)
             continue
             
