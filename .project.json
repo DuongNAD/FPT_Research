@@ -1,0 +1,7 @@
+{
+  "name": "FPT_Research",
+  "category": "02_Competitions_Research",
+  "tech": "Python",
+  "command": "python -m ...",
+  "description": "FPT Research Cyber Security Multi-Agent Sandbox"
+}
